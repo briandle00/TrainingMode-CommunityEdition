@@ -5221,9 +5221,16 @@ ComboTrainingDecideStickAngle_ComboDI_GetXY:
 
     # If In a Throw, Always DI The Direction Of The Angle
     lwz r3, 0x10(r29)
-    cmpwi r3, 0xEF
+    cmpwi r3, ASID_ThrownF
+    blt ComboTrainingDecideStickAngle_ComboDI_AdjustDirection_CheckCargoThrow
+    cmpwi r3, ASID_ThrownLwWomen
+    ble ComboTrainingDecideStickAngle_ComboDI_AdjustDirectionInThrow
+
+ComboTrainingDecideStickAngle_ComboDI_AdjustDirection_CheckCargoThrow:
+    # DK's cargo throws live in their own action state range
+    cmpwi r3, ASID_ThrownFF
     blt ComboTrainingDecideStickAngle_ComboDI_AdjustDirectionNoThrow
-    cmpwi r3, 0xF3
+    cmpwi r3, ASID_ThrownFLw
     bgt ComboTrainingDecideStickAngle_ComboDI_AdjustDirectionNoThrow
 
 ComboTrainingDecideStickAngle_ComboDI_AdjustDirectionInThrow:
@@ -5232,7 +5239,7 @@ ComboTrainingDecideStickAngle_ComboDI_AdjustDirectionInThrow:
     b ComboTrainingDecideStickAngle_ComboDI_AdjustDirectionInThrow_RightSide
 
 ComboTrainingDecideStickAngle_ComboDI_AdjustDirectionInThrow_Above90:
-    cmpwi r3, 269
+    cmpwi r24, 269
     blt ComboTrainingDecideStickAngle_ComboDI_AdjustDirectionInThrow_LeftSide
 
 ComboTrainingDecideStickAngle_ComboDI_AdjustDirectionInThrow_RightSide:
@@ -5402,11 +5409,19 @@ ComboTrainingDecideStickAngle_ConvertAngle_Exit:
 ComboTrainingCheckForThrowAngle:
     # Check If In Throw First (Must Retrieve Angle Manually)
     lwz r3, 0x10(r29)                                   # CPU AS
-    cmpwi r3, 0xEF
+    cmpwi r3, ASID_ThrownF
+    blt ComboTrainingCheckForThrowAngle_CheckCargoThrow
+    cmpwi r3, ASID_ThrownLwWomen
+    ble ComboTrainingCheckForThrowAngle_GetAngle
+
+ComboTrainingCheckForThrowAngle_CheckCargoThrow:
+    # DK's cargo throws live in their own action state range
+    cmpwi r3, ASID_ThrownFF
     blt ComboTrainingCheckForThrowAngle_NoThrow
-    cmpwi r3, 0xF3
+    cmpwi r3, ASID_ThrownFLw
     bgt ComboTrainingCheckForThrowAngle_NoThrow
 
+ComboTrainingCheckForThrowAngle_GetAngle:
     # Get Throw Angle
     addi r4, r27, 0xdf4                                 # P1 Throw Hitbox Info?
     lwz r3, 0x20(r4)                                    # Throw Angle
