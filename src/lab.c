@@ -606,11 +606,18 @@ static void Lab_ChangeInfoPreset(EventOption options[], int preset_id)
 static int combo_reset_timer = 0;
 // Set once the CPU has taken a hit, so an untouched CPU never triggers a reset.
 static int combo_was_hit = 0;
+// Frames the CPU has been free of hitstun and hitlag. Backstop so a CPU that
+// never settles - drifting offstage, stuck in a recovery - still resets.
+static int combo_idle_frames = 0;
+
+// Longest we will wait for the CPU to look "done" before resetting anyway.
+#define COMBO_SETTLE_LIMIT 120
 
 void Lab_ChangeComboReset(GOBJ *menu_gobj, int value)
 {
     combo_reset_timer = 0;
     combo_was_hit = 0;
+    combo_idle_frames = 0;
 }
 
 int CPUAction_CheckASID(GOBJ *cpu, int asid_kind);
@@ -750,8 +757,7 @@ static int Lab_ComboHasEnded(GOBJ *cpu, FighterData *cpu_data, LabData *eventDat
         return 0;
 
     if (eventData->cpu_state != CPUSTATE_START &&
-        eventData->cpu_state != CPUSTATE_NONE &&
-        eventData->cpu_state != CPUSTATE_RECOVER)
+        eventData->cpu_state != CPUSTATE_NONE)
         return 0;
 
     return CPUAction_CheckASID(cpu, ASID_ACTIONABLE);
@@ -771,11 +777,30 @@ static void Lab_ComboResetThink(GOBJ *cpu, FighterData *cpu_data, LabData *event
         combo_was_hit = 1;
 
     if (!combo_was_hit)
-        return;
-
-    if (!Lab_ComboHasEnded(cpu, cpu_data, eventData))
     {
-        // hit again, or still stuck in the combo - hold off
+        combo_idle_frames = 0;
+        return;
+    }
+
+    // being hit restarts everything
+    if (cpu_data->flags.hitstun || cpu_data->flags.hitlag)
+    {
+        combo_idle_frames = 0;
+        combo_reset_timer = 0;
+        return;
+    }
+
+    combo_idle_frames++;
+
+    // Once the CPU is knocked offstage it is not going to come back and look
+    // tidy, and waiting for it to finish recovering is the long stall. Treat
+    // going offstage, or simply taking too long to settle, as combo over.
+    int offstage = eventData->cpu_state == CPUSTATE_RECOVER;
+    int stalled = combo_idle_frames > COMBO_SETTLE_LIMIT;
+
+    if (!offstage && !stalled && !Lab_ComboHasEnded(cpu, cpu_data, eventData))
+    {
+        // still mid escape - hold off
         combo_reset_timer = 0;
         return;
     }
@@ -795,6 +820,7 @@ static void Lab_ComboResetThink(GOBJ *cpu, FighterData *cpu_data, LabData *event
 
     event_vars->Savestate_Load_v1(event_vars->savestate, 0);
     combo_was_hit = 0;
+    combo_idle_frames = 0;
 }
 
 void Lab_ChangeInfoPresetHMN(GOBJ *menu_gobj, int preset_id)
@@ -1775,6 +1801,10 @@ void CPUResetVars(void) {
 // actually reach scales with how many inputs it is set to make.
 #define SDI_UNITS_PER_INPUT 6.0f
 
+// Horizontal speed at which the attacker counts as running through the CPU
+// rather than standing and swinging. Roughly a walk.
+#define SDI_ATTACKER_CARRY_SPEED 0.8f
+
 // Is there ground within `reach` below (x, y)? Optionally reports the drop
 // distance so two candidates can be compared.
 static int Lab_GroundBelow(float x, float y, float reach, float *out_drop)
@@ -1826,13 +1856,12 @@ static ftHit *Lab_NearestActiveHitbox(FighterData *hmn_data, FighterData *cpu_da
 //   2. ground straight below and in reach - SDI down to land and reset
 //   3. ground off to one side in reach - SDI diagonally onto it, which is what
 //      picks up platforms and stage edges
-//   4. an active hitbox on the attacker - SDI straight out of it. This is the
-//      multihit escape: falco's pillar, dk's up air string, marth's dancing
-//      blade. Direction comes from the hitbox's own position, so it naturally
-//      accounts for which way the attacker is moving.
-//   5. no hitbox and nothing to land on - read the knockback. Mostly vertical
-//      means a juggle, so break out sideways away from the attacker. Mostly
-//      horizontal means being carried out, so SDI back in.
+//   4. an active hitbox on the attacker - escape it, by the shape of the hit:
+//      vertical launch is a juggle, so up and away for height and separation;
+//      horizontal launch with the attacker running through the CPU means SDI
+//      in behind them so they carry past; otherwise straight out of the hitbox.
+//   5. no hitbox and nothing to land on - same read on the knockback, with
+//      horizontal carry answered by SDIing back in against it.
 //
 // Reach scales with the Smash DI Amount option, so a CPU set to few inputs
 // correctly decides it cannot reach things a CPU set to many inputs can.
@@ -1882,13 +1911,44 @@ static void Lab_OptimalSDI(LabData *eventData, FighterData *cpu_data,
     }
 
     // get out of whatever is currently hitting us
+    float kb_x = cpu_data->phys.kb_vel.X;
+    float kb_y = cpu_data->phys.kb_vel.Y;
+    float abs_kb_x = kb_x < 0.f ? -kb_x : kb_x;
+    float abs_kb_y = kb_y < 0.f ? -kb_y : kb_y;
+
     ftHit *hit = Lab_NearestActiveHitbox(hmn_data, cpu_data);
     if (hit != 0)
     {
+        // A vertical launch is a juggle - dk's up air string, fox's up air,
+        // marth's up tilt. The answer in play is height: SDI up and away to
+        // clear the top of the hitbox, get above follow up range, and end up
+        // nearer a platform to land on. Going down here just falls back into
+        // the attacker.
+        if (abs_kb_y >= abs_kb_x)
+        {
+            eventData->cpu_sdi_lstick_x = 90 * away;
+            eventData->cpu_sdi_lstick_y = 90;
+            return;
+        }
+
+        // Horizontal, and the attacker is travelling through the CPU. The
+        // useful escape is behind them, not away from the hitbox. Fox or falco
+        // dairing out of a run is the case: SDI away and you stay in front and
+        // eat the follow up, SDI in against their movement and they carry past.
+        float atk_vel = hmn_data->phys.self_vel.X;
+        float abs_atk_vel = atk_vel < 0.f ? -atk_vel : atk_vel;
+
+        if (abs_atk_vel >= SDI_ATTACKER_CARRY_SPEED)
+        {
+            eventData->cpu_sdi_lstick_x = (atk_vel > 0.f) ? -127 : 127;
+            eventData->cpu_sdi_lstick_y = 0;
+            return;
+        }
+
+        // attacker is planted, so just leave the hitbox the short way
         float dx = x - hit->pos.X;
         float dy = y - hit->pos.Y;
 
-        // straight up if we are sat right on the hitbox centre
         if (dx == 0.f && dy == 0.f)
         {
             eventData->cpu_sdi_lstick_x = 0;
@@ -1903,16 +1963,11 @@ static void Lab_OptimalSDI(LabData *eventData, FighterData *cpu_data,
     }
 
     // nothing hitting us and nowhere to land - read the knockback instead
-    float kb_x = cpu_data->phys.kb_vel.X;
-    float kb_y = cpu_data->phys.kb_vel.Y;
-    float abs_kb_x = kb_x < 0.f ? -kb_x : kb_x;
-    float abs_kb_y = kb_y < 0.f ? -kb_y : kb_y;
-
-    if (abs_kb_y > abs_kb_x)
+    if (abs_kb_y >= abs_kb_x)
     {
-        // being juggled - break the string sideways, away from the attacker
-        eventData->cpu_sdi_lstick_x = 127 * away;
-        eventData->cpu_sdi_lstick_y = 0;
+        // juggled - same answer as above, get height and separation
+        eventData->cpu_sdi_lstick_x = 90 * away;
+        eventData->cpu_sdi_lstick_y = 90;
     }
     else
     {
