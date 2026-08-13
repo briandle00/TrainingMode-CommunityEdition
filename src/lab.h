@@ -2007,6 +2007,7 @@ enum cpu_tdi
     CPUTDI_SLIGHTTOWARD,
     CPUTDI_DOWNAWAY,
     CPUTDI_TOWARDCENTER,
+    CPUTDI_SLIDEOFF,
     CPUTDI_NUM,
 
     CPUTDI_COUNT
@@ -2130,6 +2131,8 @@ enum cpu_option
     OPTCPU_LOCKPCNT,
     OPTCPU_TECHOPTIONS,
     OPTCPU_TDI,
+    OPTCPU_SLIDEOFFRANGE,
+    OPTCPU_SLIDEOFFELSE,
     OPTCPU_CUSTOMTDI,
     OPTCPU_SDINUM,
     OPTCPU_SDIDIR,
@@ -2158,7 +2161,7 @@ enum cpu_option
 static const char *LabValues_Shield[] = {"Off", "On Until Hit", "On"};
 static const char *LabValues_ShieldDir[] = {"Neutral", "Up", "Towards", "Down", "Away"};
 static const char *LabValues_CPUBehave[] = {"Stand", "Shield", "Crouch", "Jump", "Powershield"};
-static const char *LabValues_TDI[] = {"Random", "Inwards", "Outwards", "Natural", "Custom", "Random Custom", "None", "Slight Random", "Slight Towards", "Down and Away", "Toward Center"};
+static const char *LabValues_TDI[] = {"Random", "Inwards", "Outwards", "Natural", "Custom", "Random Custom", "None", "Slight Random", "Slight Towards", "Down and Away", "Toward Center", "Slide Off"};
 static const char *LabValues_ASDI[] = {"Auto", "Away", "Towards", "Left", "Right", "Up", "Down"};
 static const char *LabValues_SDIDir[] = {"Auto", "Random", "Away", "Towards", "Left", "Right", "Up", "Down", "Toward Ground"};
 static const char *LabValues_Tech[] = {"Random", "In Place", "Away", "Towards", "None"};
@@ -2208,6 +2211,25 @@ static EventOption LabOptions_CPU[OPTCPU_COUNT] = {
         .name = "Trajectory DI",
         .desc = {"Adjust how the CPU will alter their knockback",
                  "trajectory."},
+        .values = LabValues_TDI,
+    },
+    {
+        .kind = OPTKIND_INT,
+        .value_num = 101,
+        .val = 40,
+        .value_min = 0,
+        .name = "Slide Off Range",
+        .desc = {"How close to a platform edge counts as worth",
+                 "sliding off, as a share of the platform's width."},
+        .format = "%d%%",
+    },
+    {
+        .kind = OPTKIND_STRING,
+        // every DI except Slide Off itself, which is last
+        .value_num = (sizeof(LabValues_TDI) / 4) - 1,
+        .name = "Slide Off Else",
+        .desc = {"DI to use when Slide Off has no platform edge",
+                 "in range."},
         .values = LabValues_TDI,
     },
     {
@@ -2755,6 +2777,7 @@ enum lab_combo_goal
 enum lab_combo_dk_option
 {
     OPTDK_RANDOMIZE,
+    OPTDK_MODE,
     OPTDK_MIN,
     OPTDK_MAX,
     OPTDK_OSD,
@@ -2762,6 +2785,7 @@ enum lab_combo_dk_option
     OPTDK_COUNT
 };
 
+static const char *LabValues_ComboDKMode[] = {"Range", "None or Full"};
 static const char *LabValues_ComboRndPos[] = {"Off", "On Stage", "On Platform", "Anywhere"};
 static const char *LabValues_ComboGoal[] = {"Off", "Hit Count", "Kill"};
 
@@ -2772,6 +2796,14 @@ static EventOption LabOptions_ComboDK[OPTDK_COUNT] = {
         .desc = {"Give DK a random Giant Punch charge on every",
                  "randomized reset."},
         .val = 0,
+    },
+    {
+        .kind = OPTKIND_STRING,
+        .value_num = countof(LabValues_ComboDKMode),
+        .name = "Charge Mode",
+        .desc = {"Range picks anywhere between the two limits.",
+                 "None or Full only ever gives 0 or a full punch."},
+        .values = LabValues_ComboDKMode,
     },
     {
         .kind = OPTKIND_INT,
