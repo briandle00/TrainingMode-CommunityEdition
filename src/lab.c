@@ -1759,9 +1759,102 @@ void CPUResetVars(void) {
     stc_powershield_timer = -1;
 }
 
-// How far above the last surface the CPU stood on still counts as "can get
-// grounded" for Optimal SDI.
-#define SDI_GROUNDED_REACH 12.0f
+// Each SDI input shifts the victim roughly 6 units, so how far the CPU can
+// actually reach scales with how many inputs it is set to make.
+#define SDI_UNITS_PER_INPUT 6.0f
+
+// Is there ground within `reach` below (x, y)? Optionally reports the drop
+// distance so two candidates can be compared.
+static int Lab_GroundBelow(float x, float y, float reach, float *out_drop)
+{
+    Vec3 coll_pos;
+    int line_index;
+    int line_kind;
+    Vec3 line_unk;
+
+    int hit = GrColl_RaycastGround(&coll_pos, &line_index, &line_kind, &line_unk,
+                                   -1, -1, -1, 0, x, y + 2.0f, x, y - reach, 0);
+    if (hit != 1)
+        return 0;
+
+    if (out_drop != 0)
+        *out_drop = y - coll_pos.Y;
+
+    return 1;
+}
+
+// Optimal SDI, in priority order:
+//   1. already grounded - nothing vertical to gain, so make distance instead
+//   2. ground straight below and in reach - SDI down to land and reset
+//   3. ground off to one side in reach - SDI diagonally onto it, which is what
+//      picks up platforms and stage edges
+//   4. nothing to land on - if the knockback is carrying the CPU further
+//      outward, SDI back inward to survive, otherwise get away from the opponent
+//
+// Reach scales with the Smash DI Amount option, so a CPU set to few inputs
+// correctly decides it cannot reach things a CPU set to many inputs can.
+//
+// This reads real stage geometry rather than guessing, but it decides from the
+// position at hit time - it does not simulate the trajectory, and it does not
+// know where the attacker's hitboxes are, so it will not deliberately SDI out
+// of a multihit.
+static void Lab_OptimalSDI(LabData *eventData, FighterData *cpu_data,
+                           FighterData *hmn_data, float kb_angle)
+{
+    int away = -Fighter_GetOpponentDir(cpu_data, hmn_data);
+
+    if (cpu_data->phys.air_state == 0)
+    {
+        eventData->cpu_sdi_lstick_x = 127 * away;
+        eventData->cpu_sdi_lstick_y = 0;
+        return;
+    }
+
+    int sdi_num = LabOptions_CPU[OPTCPU_SDINUM].val;
+    if (sdi_num < 1)
+        sdi_num = 1;
+    float reach = SDI_UNITS_PER_INPUT * (float)sdi_num;
+
+    float x = cpu_data->phys.pos.X;
+    float y = cpu_data->phys.pos.Y;
+
+    // straight down onto something
+    if (Lab_GroundBelow(x, y, reach, 0))
+    {
+        eventData->cpu_sdi_lstick_x = 0;
+        eventData->cpu_sdi_lstick_y = -127;
+        return;
+    }
+
+    // a platform or ledge just off to one side
+    float drop_left = 0.f;
+    float drop_right = 0.f;
+    int has_left = Lab_GroundBelow(x - reach, y, reach, &drop_left);
+    int has_right = Lab_GroundBelow(x + reach, y, reach, &drop_right);
+
+    if (has_left || has_right)
+    {
+        int go_right = has_right && (!has_left || drop_right < drop_left);
+        eventData->cpu_sdi_lstick_x = go_right ? 90 : -90;
+        eventData->cpu_sdi_lstick_y = -90;
+        return;
+    }
+
+    // nothing reachable - fight the launch if it is sending the CPU offstage
+    float launch_x = cos(kb_angle);
+    int outward = (x > 0.0f && launch_x > 0.0f) || (x < 0.0f && launch_x < 0.0f);
+
+    if (outward)
+    {
+        eventData->cpu_sdi_lstick_x = (x > 0.0f) ? -127 : 127;
+        eventData->cpu_sdi_lstick_y = 0;
+    }
+    else
+    {
+        eventData->cpu_sdi_lstick_x = 127 * away;
+        eventData->cpu_sdi_lstick_y = 0;
+    }
+}
 
 static void Lab_ComboProfileOnHit(FighterData *cpu_data);
 
@@ -2080,25 +2173,7 @@ void CPUOnHit(void) {
         }
         case (SDIDIR_OPTIMAL):
         {
-            // SDI down when the ground is close enough to reach and reset the
-            // situation, otherwise up and out of the combo.
-            //
-            // This is a heuristic, not a trajectory simulation: it measures
-            // height above the last surface the CPU stood on. It reads well on
-            // flat ground and near platforms, and is only a guess once the CPU
-            // has been carried away from where it was last grounded.
-            if (cpu_data->phys.air_state == 0)
-            {
-                // already grounded - nothing vertical to gain, go away instead
-                eventData->cpu_sdi_lstick_x = -127 * Fighter_GetOpponentDir(cpu_data, hmn_data);
-                eventData->cpu_sdi_lstick_y = 0;
-                break;
-            }
-
-            float height = cpu_data->phys.pos.Y - cpu_data->coll_data.coll_pos.Y;
-
-            eventData->cpu_sdi_lstick_x = 0;
-            eventData->cpu_sdi_lstick_y = (height <= SDI_GROUNDED_REACH) ? -127 : 127;
+            Lab_OptimalSDI(eventData, cpu_data, hmn_data, kb_angle);
             break;
         }
     }
