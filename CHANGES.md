@@ -93,7 +93,8 @@ Lab's counter action otherwise applies one global move to everyone:
 Position picks a spot by raycasting for ground, so it works on any stage; the
 zone filter tells platforms from the stage by height above the main floor. The
 CPU is always placed just in front of you, the same as pressing DPad down.
-Facing and percent are separate toggles.
+Facing and percent are separate toggles; turning around brings the CPU round to
+the front with you rather than leaving it behind.
 
 **Goals.** A setup can require a number of hits or a kill, and `Goal Streak` sets
 how many times in a row it must be cleared. Until then the same setup repeats,
@@ -101,9 +102,11 @@ so a missed attempt means another go at it rather than a new one. With no goal
 set every attempt counts as cleared. Once a setup is cleared the new one is saved
 over the reset state, so plain resets return to it.
 
-**DK Options** randomize Giant Punch charge on each new setup, between a lowest
-and highest number of windups so partial charges can be practiced. `Show Charge`
-puts the result on screen — full, none, or `n/10`.
+**DK Options** randomize Giant Punch charge on each new setup. `Charge Mode` is
+either `Range`, picking anywhere between a lowest and highest number of windups,
+or `None or Full`, which only ever gives 0 or a full punch — the two cases that
+change what DK actually threatens. `Show Charge` puts the result on screen: full,
+none, or `n/10`.
 
 **Percent profiles** snapshot the entire `LabOptions_CPU` and `LabOptions_Tech`
 value sets. Configure a low percent setup, save it, configure a kill percent one,
@@ -119,6 +122,12 @@ asm event.
 carries the CPU back toward the middle of the stage rather than out toward a
 blast zone. This is the "DI to center stage when you cannot slide off" answer,
 and the same one for surviving a kill move.
+
+`Slide Off` DIs toward the near edge of the platform the CPU is standing on, but
+only when that edge is close enough to be worth going for. `Slide Off Range` sets
+how close as a share of the platform's width, so it means the same thing on
+Battlefield as on Yoshi's rather than being a fixed distance. `Slide Off Else`
+names the DI to use when no edge is in range.
 
 ### New Smash DI direction: Toward Ground
 
