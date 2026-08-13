@@ -744,20 +744,14 @@ static void Lab_ComboProfileOnHit(FighterData *cpu_data)
 
 
 // Returns true once the CPU has settled out of a combo and is free to act.
+// The countdown starts as soon as the CPU can act again. Waiting for its state
+// machine to unwind all the way back to idle - counter action, then recovery,
+// then settle - stacks tens of frames on top of the delay and hands back far
+// too long to pick a dropped combo up. Reset Delay should mean what it says:
+// frames after the CPU is free to act.
 static int Lab_ComboHasEnded(GOBJ *cpu, FighterData *cpu_data, LabData *eventData)
 {
     if (cpu_data->flags.hitstun || cpu_data->flags.hitlag)
-        return 0;
-
-    // Being actionable is not the same as being done. The CPU is actionable the
-    // instant hitstun ends, which is before it has airdodged, jumped out or
-    // counter attacked - starting the countdown there resets out from under its
-    // own escape. Wait until the counter action is finished.
-    if (eventData->cpu_countering)
-        return 0;
-
-    if (eventData->cpu_state != CPUSTATE_START &&
-        eventData->cpu_state != CPUSTATE_NONE)
         return 0;
 
     return CPUAction_CheckASID(cpu, ASID_ACTIONABLE);
@@ -1836,6 +1830,15 @@ static int Lab_SDITowardGround(LabData *eventData, FighterData *cpu_data)
     int sdi_num = LabOptions_CPU[OPTCPU_SDINUM].val;
     if (sdi_num < 1)
         sdi_num = 1;
+
+    // SDI only happens during hitlag, so the move itself caps how many inputs
+    // are actually available no matter what the option asks for. A 4 frame
+    // hitlag move cannot be SDIed 7 times, and treating it as if it could made
+    // ground look reachable when it was not.
+    int hitlag = (int)cpu_data->dmg.hitlag_frames;
+    if (hitlag > 0 && hitlag < sdi_num)
+        sdi_num = hitlag;
+
     float reach = SDI_UNITS_PER_INPUT * (float)sdi_num;
 
     float x = cpu_data->phys.pos.X;
