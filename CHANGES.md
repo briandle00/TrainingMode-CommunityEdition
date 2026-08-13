@@ -141,10 +141,18 @@ does not knock down there once it has been used a few times in a combo.
 Set knockback moves report that they never knock down, since they ignore percent
 by definition.
 
-**Percent profiles** snapshot the entire `LabOptions_CPU` and `LabOptions_Tech`
-value sets. Configure a low percent setup, save it, configure a kill percent one,
-save that, set the switch percent. The active set is chosen when the CPU is hit,
-not every frame, so it never fights menu edits.
+**Percent profiles** snapshot the `LabOptions_CPU` and `LabOptions_Tech` value
+sets. Configure a low percent setup, save it, configure a kill percent one, save
+that, set the switch percent.
+
+The active set is only stamped over the options when the CPU crosses the switch
+percent, not on every hit, so anything changed in the menu in between stays put.
+Re-saving a profile takes effect at the next crossing.
+
+The percent row and the move-CPU row are left out of both the snapshot and the
+restore: the first is rewritten every frame from the CPU's actual damage and the
+second is a menu action rather than a setting, so carrying either between
+profiles only fights whatever else owns them.
 
 ### New Trajectory DI options
 

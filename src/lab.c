@@ -606,6 +606,10 @@ static void Lab_ChangeInfoPreset(EventOption options[], int preset_id)
 static int combo_reset_timer = 0;
 // Set once the CPU has taken a hit, so an untouched CPU never triggers a reset.
 static int combo_was_hit = 0;
+// Which percent profile is currently loaded. -1 means none, so the next hit
+// stamps one on.
+static int combo_profile_applied = -1;
+
 // Cleared setups in a row, and how the current attempt is going.
 static int combo_streak = 0;
 static int combo_attempt_hits = 0;
@@ -625,6 +629,7 @@ void Lab_ChangeComboReset(GOBJ *menu_gobj, int value)
     combo_streak = 0;
     combo_attempt_hits = 0;
     combo_attempt_killed = 0;
+    combo_profile_applied = -1;
 }
 
 int CPUAction_CheckASID(GOBJ *cpu, int asid_kind);
@@ -699,14 +704,30 @@ static s16 combo_profile_cpu[2][OPTCPU_COUNT];
 static s16 combo_profile_tech[2][OPTTECH_COUNT];
 static u8 combo_profile_saved[2] = {0, 0};
 
+// Options that must not be snapshotted or restored. The percent row is rewritten
+// every frame from the CPU's actual damage, and the position row is a menu
+// action rather than a setting, so carrying either between profiles just fights
+// whatever else owns them.
+static int Lab_ComboProfileSkips(int opt)
+{
+    return opt == OPTCPU_PCNT || opt == OPTCPU_SET_POS;
+}
+
 static void Lab_ComboSaveProfile(int idx)
 {
     for (int i = 0; i < OPTCPU_COUNT; ++i)
+    {
+        if (Lab_ComboProfileSkips(i))
+            continue;
         combo_profile_cpu[idx][i] = LabOptions_CPU[i].val;
+    }
     for (int i = 0; i < OPTTECH_COUNT; ++i)
         combo_profile_tech[idx][i] = LabOptions_Tech[i].val;
 
     combo_profile_saved[idx] = 1;
+
+    // re-saving should take effect at the next crossing
+    combo_profile_applied = -1;
 }
 
 static void Lab_ComboApplyProfile(int idx)
@@ -715,9 +736,15 @@ static void Lab_ComboApplyProfile(int idx)
         return;
 
     for (int i = 0; i < OPTCPU_COUNT; ++i)
+    {
+        if (Lab_ComboProfileSkips(i))
+            continue;
         LabOptions_CPU[i].val = combo_profile_cpu[idx][i];
+    }
     for (int i = 0; i < OPTTECH_COUNT; ++i)
         LabOptions_Tech[i].val = combo_profile_tech[idx][i];
+
+    combo_profile_applied = idx;
 }
 
 void Lab_ComboSaveLow(GOBJ *menu_gobj)
@@ -736,12 +763,22 @@ static void Lab_ComboProfileOnHit(FighterData *cpu_data)
 {
     int threshold = LabOptions_Combo[OPTCOMBO_PCNTSWITCH].val;
     if (threshold <= 0)
+    {
+        combo_profile_applied = -1;
         return;
+    }
     if (!combo_profile_saved[COMBO_PROFILE_LOW] || !combo_profile_saved[COMBO_PROFILE_HIGH])
         return;
 
-    int high = cpu_data->dmg.percent >= (float)threshold;
-    Lab_ComboApplyProfile(high ? COMBO_PROFILE_HIGH : COMBO_PROFILE_LOW);
+    int want = (cpu_data->dmg.percent >= (float)threshold)
+             ? COMBO_PROFILE_HIGH : COMBO_PROFILE_LOW;
+
+    // Only stamp the options on a crossing. Doing it every hit meant any change
+    // made in the menu was wiped by the next one.
+    if (want == combo_profile_applied)
+        return;
+
+    Lab_ComboApplyProfile(want);
 }
 
 
