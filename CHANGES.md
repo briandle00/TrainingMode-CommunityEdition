@@ -123,23 +123,20 @@ carries the CPU back toward the middle of the stage rather than out toward a
 blast zone. This is the "DI to center stage when you cannot slide off" answer,
 and the same one for surviving a kill move.
 
-`Slide Off` DIs toward the near edge of the platform the CPU is standing on, but
-only when that edge is close enough to be worth going for. `Slide Off Range` sets
-how close as a share of the platform's width, so it means the same thing on
-Battlefield as on Yoshi's rather than being a fixed distance. `Slide Off Else`
-names the DI to use when no edge is in range.
+`Slide Off` performs slideoff DI: control stick toward the edge the CPU is stood
+next to, plus C-stick down. The C-stick is the part that does the work — ASDI
+shifts the CPU off the lip, which edge cancels the knockdown and leaves it
+actionable, which is what makes it a reversal out of platform tech chases.
+
+It only applies from right by the edge, within 10 units, which in practice means
+straight out of a tech roll. It works off the stage edge as well as platforms.
+`Slide Off Else` names the DI to use anywhere else.
+
+Slideoff forces ASDI down for that hit, overriding the ASDI option.
 
 ### New Smash DI direction: Toward Ground
 
-Aims the CPU at ground it could actually reach.
-
-**On a platform** it slides off the near edge, which is how you get to the ground
-from up there and ends the string on the way. It reads the ground line the CPU is
-actually standing on and asks melee for that line's ends, so it follows real
-platform geometry. Ground wider than 80 units counts as the stage rather than a
-platform, so it does not try to slide off the stage floor.
-
-**In the air** it SDIs straight down if there is something directly below, or
+Aims the CPU at ground it could actually reach: SDIs straight down if there is something directly below, or
 diagonally toward the shorter drop if the ground is off to one side.
 
 Range is `6 units x N`, where `N` is the lower of Smash DI Amount and the move's
