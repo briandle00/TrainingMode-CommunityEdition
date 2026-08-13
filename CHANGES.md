@@ -156,7 +156,9 @@ cannot be SDIed 7 times.
 
 Options that depend on another option — the two `Else` rows, the reset delay,
 the percent range, the goal settings, the DK charge limits — are greyed out when
-that option is not selected, so it is clear which ones are actually in play.
+that option is not selected, so it is clear which ones are actually in play. This
+updates live, from `Event_Update` rather than `Event_Think`, because the latter
+does not run while the game is paused with the menu open.
 
 `Toward Ground Else` sets the direction to use when nothing is in range,
 offering every direction except Toward Ground itself. It resolves before the
