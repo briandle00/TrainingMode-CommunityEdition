@@ -2006,6 +2006,7 @@ enum cpu_tdi
     CPUTDI_SLIGHTRANDOM,
     CPUTDI_SLIGHTTOWARD,
     CPUTDI_DOWNAWAY,
+    CPUTDI_TOWARDCENTER,
     CPUTDI_NUM,
 
     CPUTDI_COUNT
@@ -2107,6 +2108,7 @@ enum sdi_dir
     SDIDIR_RIGHT,
     SDIDIR_UP,
     SDIDIR_DOWN,
+    SDIDIR_SLIDEOFF,
     SDIDIR_TOWARDGROUND,
 
     SDIDIR_COUNT
@@ -2157,9 +2159,9 @@ enum cpu_option
 static const char *LabValues_Shield[] = {"Off", "On Until Hit", "On"};
 static const char *LabValues_ShieldDir[] = {"Neutral", "Up", "Towards", "Down", "Away"};
 static const char *LabValues_CPUBehave[] = {"Stand", "Shield", "Crouch", "Jump", "Powershield"};
-static const char *LabValues_TDI[] = {"Random", "Inwards", "Outwards", "Natural", "Custom", "Random Custom", "None", "Slight Random", "Slight Towards", "Down and Away"};
+static const char *LabValues_TDI[] = {"Random", "Inwards", "Outwards", "Natural", "Custom", "Random Custom", "None", "Slight Random", "Slight Towards", "Down and Away", "Toward Center"};
 static const char *LabValues_ASDI[] = {"Auto", "Away", "Towards", "Left", "Right", "Up", "Down"};
-static const char *LabValues_SDIDir[] = {"Auto", "Random", "Away", "Towards", "Left", "Right", "Up", "Down", "Toward Ground"};
+static const char *LabValues_SDIDir[] = {"Auto", "Random", "Away", "Towards", "Left", "Right", "Up", "Down", "Slide Off", "Toward Ground"};
 static const char *LabValues_Tech[] = {"Random", "In Place", "Away", "Towards", "None"};
 static const char *LabValues_Getup[] = {"Random", "Stand", "Away", "Towards", "Attack"};
 static const char *LabValues_GrabEscape[] = {"None", "Medium", "High", "Perfect"};
