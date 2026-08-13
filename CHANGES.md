@@ -115,6 +115,21 @@ not every frame, so it never fights menu edits.
 `Slight Random`, `Slight Towards` and `Down and Away`, from the Combo Training
 asm event.
 
+`Toward Center` takes whichever of the two perpendiculars to the knockback
+carries the CPU back toward the middle of the stage rather than out toward a
+blast zone. This is the "DI to center stage when you cannot slide off" answer,
+and the same one for surviving a kill move.
+
+### New Smash DI direction: Slide Off
+
+SDI toward the near edge of the platform the CPU is standing on, so it slides off
+and the string ends. It reads the ground line the CPU is actually on and asks
+melee for that line's ends, so it follows real platform geometry rather than
+assuming anything about the stage.
+
+Ground wider than 80 units counts as the stage rather than a platform, and off a
+platform it falls back to Auto — sliding off the stage floor is not a thing.
+
 ### New Smash DI direction: Toward Ground
 
 If there is ground the CPU could drop onto, SDI at it: straight down, or
