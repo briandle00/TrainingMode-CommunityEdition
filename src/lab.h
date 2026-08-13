@@ -2723,8 +2723,88 @@ enum lab_combo_option
     OPTCOMBO_PCNTSWITCH,
     OPTCOMBO_SAVELOW,
     OPTCOMBO_SAVEHIGH,
+    OPTCOMBO_RNDPOS,
+    OPTCOMBO_RNDFACING,
+    OPTCOMBO_RNDPCNT,
+    OPTCOMBO_PCNTMIN,
+    OPTCOMBO_PCNTMAX,
+    OPTCOMBO_GOAL,
+    OPTCOMBO_GOALHITS,
+    OPTCOMBO_GOALSTREAK,
+    OPTCOMBO_DKMENU,
 
     OPTCOMBO_COUNT
+};
+
+enum lab_combo_rndpos
+{
+    RNDPOS_OFF,
+    RNDPOS_STAGE,
+    RNDPOS_PLATFORM,
+    RNDPOS_ANYWHERE,
+};
+
+enum lab_combo_goal
+{
+    COMBOGOAL_OFF,
+    COMBOGOAL_HITS,
+    COMBOGOAL_KILL,
+};
+
+enum lab_combo_dk_option
+{
+    OPTDK_RANDOMIZE,
+    OPTDK_MIN,
+    OPTDK_MAX,
+    OPTDK_OSD,
+
+    OPTDK_COUNT
+};
+
+static const char *LabValues_ComboRndPos[] = {"Off", "On Stage", "On Platform", "Anywhere"};
+static const char *LabValues_ComboGoal[] = {"Off", "Hit Count", "Kill"};
+
+static EventOption LabOptions_ComboDK[OPTDK_COUNT] = {
+    {
+        .kind = OPTKIND_TOGGLE,
+        .name = "Randomize Punch Charge",
+        .desc = {"Give DK a random Giant Punch charge on every",
+                 "randomized reset."},
+        .val = 0,
+    },
+    {
+        .kind = OPTKIND_INT,
+        .value_num = 11,
+        .val = 0,
+        .value_min = 0,
+        .name = "Lowest Charge",
+        .desc = {"Fewest windups the random charge may give.",
+                 "0 is no charge, 10 is fully charged."},
+        .format = "%d",
+    },
+    {
+        .kind = OPTKIND_INT,
+        .value_num = 11,
+        .val = 10,
+        .value_min = 0,
+        .name = "Highest Charge",
+        .desc = {"Most windups the random charge may give.",
+                 "0 is no charge, 10 is fully charged."},
+        .format = "%d",
+    },
+    {
+        .kind = OPTKIND_TOGGLE,
+        .name = "Show Charge",
+        .desc = {"Display the charge given on each reset, so a",
+                 "partial charge is not a surprise."},
+        .val = 1,
+    },
+};
+
+static EventMenu LabMenu_ComboDK = {
+    .name = "DK Options",
+    .option_num = countof(LabOptions_ComboDK),
+    .options = LabOptions_ComboDK,
 };
 
 enum lab_combo_escape
@@ -2791,6 +2871,81 @@ static EventOption LabOptions_Combo[OPTCOMBO_COUNT] = {
         .desc = {"Store every CPU and tech option as the set to",
                  "use at or above the switch percent."},
         .OnSelect = Lab_ComboSaveHigh,
+    },
+    {
+        .kind = OPTKIND_STRING,
+        .value_num = countof(LabValues_ComboRndPos),
+        .name = "Randomize Position",
+        .desc = {"Move both fighters somewhere new on each reset.",
+                 "The CPU is placed in front of you, as if you had",
+                 "pressed DPad down."},
+        .values = LabValues_ComboRndPos,
+    },
+    {
+        .kind = OPTKIND_TOGGLE,
+        .name = "Randomize Facing",
+        .desc = {"Randomize which way you are facing on each reset."},
+        .val = 0,
+    },
+    {
+        .kind = OPTKIND_TOGGLE,
+        .name = "Randomize Percent",
+        .desc = {"Give the CPU a random percent within the range",
+                 "below on each reset."},
+        .val = 0,
+    },
+    {
+        .kind = OPTKIND_INT,
+        .value_num = 1000,
+        .val = 0,
+        .value_min = 0,
+        .name = "Percent Low",
+        .desc = {"Bottom of the random percent range."},
+        .format = "%d%%",
+    },
+    {
+        .kind = OPTKIND_INT,
+        .value_num = 1000,
+        .val = 100,
+        .value_min = 0,
+        .name = "Percent High",
+        .desc = {"Top of the random percent range."},
+        .format = "%d%%",
+    },
+    {
+        .kind = OPTKIND_STRING,
+        .value_num = countof(LabValues_ComboGoal),
+        .name = "Goal",
+        .desc = {"What counts as clearing a setup. The same setup",
+                 "repeats until it is cleared, then a new one is",
+                 "randomized."},
+        .values = LabValues_ComboGoal,
+    },
+    {
+        .kind = OPTKIND_INT,
+        .value_num = 31,
+        .val = 3,
+        .value_min = 1,
+        .name = "Goal Hit Count",
+        .desc = {"Hits needed to clear a setup when the goal is",
+                 "Hit Count."},
+        .format = "%d",
+    },
+    {
+        .kind = OPTKIND_INT,
+        .value_num = 21,
+        .val = 1,
+        .value_min = 1,
+        .name = "Goal Streak",
+        .desc = {"Times in a row a setup must be cleared before a",
+                 "new one is randomized."},
+        .format = "%d",
+    },
+    {
+        .kind = OPTKIND_MENU,
+        .menu = &LabMenu_ComboDK,
+        .name = "DK Options",
+        .desc = {"Donkey Kong specific setup randomization."},
     },
 };
 
