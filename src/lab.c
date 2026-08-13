@@ -1805,6 +1805,19 @@ void CPUResetVars(void) {
 // rather than standing and swinging. Roughly a walk.
 #define SDI_ATTACKER_CARRY_SPEED 0.8f
 
+// Knockback below this is a linking hit rather than a launcher. We cannot read
+// the attacker's script to see whether more hits are coming, but a weak hit
+// landed while a hitbox is still live is a multihit link in practice.
+#define SDI_MULTIHIT_KB 1.6f
+
+// A launch weaker than this leaves the CPU close enough to the stage that
+// getting grounded is realistic, so falling out is worth more than height.
+#define SDI_GROUNDABLE_KB 3.0f
+
+// How far below to look for a landing when the CPU is going to fall anyway.
+// Larger than raw SDI reach because the knockback brings it most of the way.
+#define SDI_FALL_LOOKAHEAD 45.0f
+
 // Is there ground within `reach` below (x, y)? Optionally reports the drop
 // distance so two candidates can be compared.
 static int Lab_GroundBelow(float x, float y, float reach, float *out_drop)
@@ -1857,7 +1870,10 @@ static ftHit *Lab_NearestActiveHitbox(FighterData *hmn_data, FighterData *cpu_da
 //   3. ground off to one side in reach - SDI diagonally onto it, which is what
 //      picks up platforms and stage edges
 //   4. an active hitbox on the attacker - escape it, by the shape of the hit:
-//      vertical launch is a juggle, so up and away for height and separation;
+//      a weak hit is a multihit link, so break out sideways where the move
+//      cannot follow; a vertical launch is a juggle, answered by falling out
+//      to the ground if the launch is weak enough to make that realistic and
+//      by height if it is not;
 //      horizontal launch with the attacker running through the CPU means SDI
 //      in behind them so they carry past; otherwise straight out of the hitbox.
 //   5. no hitbox and nothing to land on - same read on the knockback, with
@@ -1919,6 +1935,31 @@ static void Lab_OptimalSDI(LabData *eventData, FighterData *cpu_data,
     ftHit *hit = Lab_NearestActiveHitbox(hmn_data, cpu_data);
     if (hit != 0)
     {
+        float kb_mag = sqrtf(kb_x * kb_x + kb_y * kb_y);
+
+        // A weak hit with a hitbox still live is a link in a multihit, not a
+        // launcher - fox's up air and drill, marth's dancing blade. These carry
+        // the CPU along with the move, so the vertical read below is exactly
+        // wrong: SDIing up into fox's up air rides it and eats every remaining
+        // hit. Break out sideways instead, which is the separation the move
+        // cannot follow.
+        if (kb_mag < SDI_MULTIHIT_KB)
+        {
+            float out_x = x - hit->pos.X;
+            int dir;
+
+            if (out_x > 0.5f)
+                dir = 1;
+            else if (out_x < -0.5f)
+                dir = -1;
+            else
+                dir = away; // sat on the hitbox axis, pick the open side
+
+            eventData->cpu_sdi_lstick_x = 127 * dir;
+            eventData->cpu_sdi_lstick_y = 0;
+            return;
+        }
+
         // A vertical launch is a juggle - dk's up air string, fox's up air,
         // marth's up tilt. The answer in play is height: SDI up and away to
         // clear the top of the hitbox, get above follow up range, and end up
