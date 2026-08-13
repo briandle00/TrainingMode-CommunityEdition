@@ -601,6 +601,106 @@ static void Lab_ChangeInfoPreset(EventOption options[], int preset_id)
         options[OPTINF_ROW1 + i].val = preset[i];
 }
 
+// Frames left before the combo trainer returns to the saved position.
+// 0 means nothing is pending.
+static int combo_reset_timer = 0;
+// Set once the CPU has taken a hit, so an untouched CPU never triggers a reset.
+static int combo_was_hit = 0;
+
+void Lab_ChangeComboReset(GOBJ *menu_gobj, int value)
+{
+    combo_reset_timer = 0;
+    combo_was_hit = 0;
+}
+
+// Presets only write values when picked, so anything the user changes
+// afterwards sticks.
+void Lab_ChangeComboPreset(GOBJ *menu_gobj, int preset_id)
+{
+    if (preset_id == COMBOPRESET_CUSTOM)
+        return;
+
+    LabOptions_Combo[OPTCOMBO_RESET].val = 1;
+    combo_reset_timer = 0;
+    combo_was_hit = 0;
+
+    switch (preset_id)
+    {
+    case COMBOPRESET_BASIC:
+        // Predictable dummy for learning a combo's timing.
+        LabOptions_CPU[OPTCPU_TDI].val = CPUTDI_NONE;
+        LabOptions_CPU[OPTCPU_SDINUM].val = 0;
+        LabOptions_Tech[OPTTECH_TECH].val = CPUTECH_NONE;
+        break;
+
+    case COMBOPRESET_MIXUP:
+        // Random DI and tech, so the combo has to be adapted every rep.
+        LabOptions_CPU[OPTCPU_TDI].val = CPUTDI_RANDOM;
+        LabOptions_CPU[OPTCPU_SDINUM].val = 0;
+        LabOptions_Tech[OPTTECH_TECH].val = CPUTECH_RANDOM;
+        break;
+
+    case COMBOPRESET_ESCAPE:
+        // CPU fights to get out: DI, SDI and techs.
+        LabOptions_CPU[OPTCPU_TDI].val = CPUTDI_RANDOM;
+        LabOptions_CPU[OPTCPU_SDINUM].val = 4;
+        LabOptions_CPU[OPTCPU_SDIDIR].val = SDIDIR_RANDOM;
+        LabOptions_Tech[OPTTECH_TECH].val = CPUTECH_RANDOM;
+        break;
+    }
+}
+
+int CPUAction_CheckASID(GOBJ *cpu, int asid_kind);
+
+// Returns true once the CPU has settled out of a combo and is free to act.
+static int Lab_ComboHasEnded(GOBJ *cpu, FighterData *cpu_data)
+{
+    if (cpu_data->flags.hitstun || cpu_data->flags.hitlag)
+        return 0;
+
+    return CPUAction_CheckASID(cpu, ASID_ACTIONABLE);
+}
+
+// Counts down once the combo is over and restores the saved position.
+static void Lab_ComboResetThink(GOBJ *cpu, FighterData *cpu_data, LabData *eventData)
+{
+    if (LabOptions_Combo[OPTCOMBO_RESET].val == 0)
+    {
+        combo_reset_timer = 0;
+        combo_was_hit = 0;
+        return;
+    }
+
+    if (eventData->cpu_hitnum > 0)
+        combo_was_hit = 1;
+
+    if (!combo_was_hit)
+        return;
+
+    if (!Lab_ComboHasEnded(cpu, cpu_data))
+    {
+        // hit again, or still stuck in the combo - hold off
+        combo_reset_timer = 0;
+        return;
+    }
+
+    if (combo_reset_timer == 0)
+    {
+        combo_reset_timer = LabOptions_Combo[OPTCOMBO_DELAY].val;
+
+        // a delay of zero means reset immediately
+        if (combo_reset_timer == 0)
+            combo_reset_timer = 1;
+    }
+
+    combo_reset_timer--;
+    if (combo_reset_timer > 0)
+        return;
+
+    event_vars->Savestate_Load_v1(event_vars->savestate, 0);
+    combo_was_hit = 0;
+}
+
 void Lab_ChangeInfoPresetHMN(GOBJ *menu_gobj, int preset_id)
 {
     Lab_ChangeInfoPreset(LabOptions_InfoDisplayHMN, preset_id);
@@ -6639,6 +6739,8 @@ void Event_Think(GOBJ *event)
     // update menu's percent
     LabOptions_General[OPTGEN_HMNPCNT].val = hmn_data->dmg.percent;
     LabOptions_CPU[OPTCPU_PCNT].val = cpu_data->dmg.percent;
+
+    Lab_ComboResetThink(cpu, cpu_data, eventData);
     
     // reset stale moves
     if (LabOptions_General[OPTGEN_STALE].val == 0)
