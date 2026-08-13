@@ -2131,7 +2131,6 @@ enum cpu_option
     OPTCPU_LOCKPCNT,
     OPTCPU_TECHOPTIONS,
     OPTCPU_TDI,
-    OPTCPU_SLIDEOFFRANGE,
     OPTCPU_SLIDEOFFELSE,
     OPTCPU_CUSTOMTDI,
     OPTCPU_SDINUM,
@@ -2214,22 +2213,12 @@ static EventOption LabOptions_CPU[OPTCPU_COUNT] = {
         .values = LabValues_TDI,
     },
     {
-        .kind = OPTKIND_INT,
-        .value_num = 101,
-        .val = 40,
-        .value_min = 0,
-        .name = "Slide Off Range",
-        .desc = {"How close to a platform edge counts as worth",
-                 "sliding off, as a share of the platform's width."},
-        .format = "%d%%",
-    },
-    {
         .kind = OPTKIND_STRING,
         // every DI except Slide Off itself, which is last
         .value_num = (sizeof(LabValues_TDI) / 4) - 1,
         .name = "Slide Off Else",
-        .desc = {"DI to use when Slide Off has no platform edge",
-                 "in range."},
+        .desc = {"DI to use when the CPU is not stood right by",
+                 "an edge to slide off."},
         .values = LabValues_TDI,
     },
     {

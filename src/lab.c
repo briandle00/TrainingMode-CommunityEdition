@@ -2069,8 +2069,10 @@ void CPUResetVars(void) {
 // actually reach scales with how many inputs it is set to make.
 #define SDI_UNITS_PER_INPUT 6.0f
 
-// Ground wider than this is the stage itself rather than a platform.
-#define COMBO_MAX_PLATFORM_WIDTH 80.0f
+// How close to the edge slideoff DI actually works from. ASDI only shifts you a
+// few units, so this is "stood on the lip", roughly where a tech roll leaves you
+// - not anywhere on the platform.
+#define SLIDEOFF_EDGE_RANGE 10.0f
 
 // Is there ground within `reach` below (x, y)? Optionally reports the drop
 // distance so two candidates can be compared.
@@ -2095,10 +2097,10 @@ static int Lab_GroundBelow(float x, float y, float reach, float *out_drop)
 // SDI toward the near edge of the platform the CPU is standing on, so it slides
 // off. Returns 0 when not on a platform, since sliding off the main stage floor
 // is not a thing.
-// Is the fighter stood on a platform? Reports which way the nearer edge is, how
-// far off it is, and how wide the platform is. Returns 0 on the stage floor,
-// which is not something you slide off usefully.
-static int Lab_PlatformEdge(FighterData *data, int *out_dir, float *out_dist, float *out_width)
+// Which way is the nearer edge of the ground the fighter is stood on, and how
+// far off is it? Works on the stage as well as platforms - slideoff DI is a
+// stage edge technique too.
+static int Lab_GroundEdge(FighterData *data, int *out_dir, float *out_dist)
 {
     if (data->phys.air_state != 0)
         return 0;
@@ -2111,10 +2113,6 @@ static int Lab_PlatformEdge(FighterData *data, int *out_dir, float *out_dist, fl
     Vec3 right;
     GrColl_GetGroundLineEndLeft(line, &left);
     GrColl_GetGroundLineEndRight(line, &right);
-
-    float width = right.X - left.X;
-    if (width > COMBO_MAX_PLATFORM_WIDTH)
-        return 0;
 
     float x = data->phys.pos.X;
     float to_left = x - left.X;
@@ -2131,39 +2129,24 @@ static int Lab_PlatformEdge(FighterData *data, int *out_dir, float *out_dist, fl
         *out_dist = to_left;
     }
 
-    *out_width = width;
     return 1;
 }
 
-static int Lab_SDISlideOff(LabData *eventData, FighterData *cpu_data)
-{
-    int dir;
-    float dist;
-    float width;
-
-    if (!Lab_PlatformEdge(cpu_data, &dir, &dist, &width))
-        return 0;
-
-    eventData->cpu_sdi_lstick_x = 127 * dir;
-    eventData->cpu_sdi_lstick_y = 0;
-    return 1;
-}
-
-// DI toward the near platform edge, but only when it is close enough to be
-// worth going for. Slide Off Range is that closeness as a share of the
-// platform's width, so it scales with the platform rather than being a fixed
-// distance that means different things on Battlefield and Yoshi's.
+// Slideoff DI: control stick toward the edge you are stood next to, C-stick
+// down. The C-stick is the actual mechanism - ASDI shifts you off the ledge,
+// which edge cancels the knockdown and leaves you actionable.
+//
+// It only works when you are already right by the edge, which in practice means
+// straight out of a tech roll. It is not a "somewhere on the platform" option.
 static int Lab_TDISlideOff(LabData *eventData, FighterData *cpu_data)
 {
     int dir;
     float dist;
-    float width;
 
-    if (!Lab_PlatformEdge(cpu_data, &dir, &dist, &width))
+    if (!Lab_GroundEdge(cpu_data, &dir, &dist))
         return 0;
 
-    float share = (float)LabOptions_CPU[OPTCPU_SLIDEOFFRANGE].val * 0.01f;
-    if (dist > width * share)
+    if (dist > SLIDEOFF_EDGE_RANGE)
         return 0;
 
     eventData->cpu_tdi_lstick_x = 127 * dir;
@@ -2171,8 +2154,7 @@ static int Lab_TDISlideOff(LabData *eventData, FighterData *cpu_data)
     return 1;
 }
 
-// Aim the CPU at ground it could actually reach. On a platform that means
-// sliding off the near edge; in the air it means straight down if there is
+// Aim the CPU at ground it could actually drop onto: straight down if there is
 // something directly below, otherwise diagonally toward whichever side has the
 // shorter drop. With nothing in range it returns 0 and the caller uses the
 // Toward Ground Else direction.
@@ -2181,10 +2163,8 @@ static int Lab_TDISlideOff(LabData *eventData, FighterData *cpu_data)
 // victim, so it only fires when landing is genuinely reachable.
 static int Lab_SDITowardGround(LabData *eventData, FighterData *cpu_data)
 {
-    // Standing on a platform counts: sliding off the near edge is how you reach
-    // the ground from up there, and it ends the string on the way.
     if (cpu_data->phys.air_state == 0)
-        return Lab_SDISlideOff(eventData, cpu_data);
+        return 0;
 
     int sdi_num = LabOptions_CPU[OPTCPU_SDINUM].val;
     if (sdi_num < 1)
@@ -2302,12 +2282,18 @@ void CPUOnHit(void) {
 
     // Slide Off resolves before the switch. With no edge in range it hands over
     // to whichever DI the else option names.
+    int slideoff = 0;
     if (tdi_kind == CPUTDI_SLIDEOFF)
     {
         if (Lab_TDISlideOff(eventData, cpu_data))
+        {
             tdi_kind = -1; // handled, fall through the switch
+            slideoff = 1;
+        }
         else
+        {
             tdi_kind = LabOptions_CPU[OPTCPU_SLIDEOFFELSE].val;
+        }
     }
 
     switch (tdi_kind)
@@ -2463,6 +2449,15 @@ void CPUOnHit(void) {
     
     // decide ASDI direction ----------------------------------------
     
+    // slideoff DI is an ASDI technique - the C-stick down is what does the work,
+    // so it overrides whatever the ASDI option says
+    if (slideoff)
+    {
+        eventData->cpu_asdi_cstick_x = 0;
+        eventData->cpu_asdi_cstick_y = -127;
+        goto ASDI_DONE;
+    }
+
     // only apply ASDI setting when not using custom TDI.
     if (custom_di) goto ASDI_AUTO;
 
@@ -2514,6 +2509,7 @@ void CPUOnHit(void) {
             break;
         }
     }
+    ASDI_DONE:;
 
     // decide SDI direction ------------------------------------
     
