@@ -2102,11 +2102,20 @@ static int Lab_GroundBelow(float x, float y, float reach, float *out_drop)
 // stage edge technique too.
 static int Lab_GroundEdge(FighterData *data, int *out_dir, float *out_dist)
 {
-    if (data->phys.air_state != 0)
-        return 0;
+    // Raycast for the ground rather than reading the fighter's own
+    // ground_index. By the time a hit is processed the knockback has often
+    // already lifted the CPU, which clears that index and made this fail
+    // exactly when slideoff was being attempted.
+    Vec3 coll_pos;
+    int line;
+    int line_kind;
+    Vec3 line_unk;
 
-    int line = data->coll_data.ground_index;
-    if (line < 0)
+    float x = data->phys.pos.X;
+    float y = data->phys.pos.Y;
+
+    if (GrColl_RaycastGround(&coll_pos, &line, &line_kind, &line_unk,
+                             -1, -1, -1, 0, x, y + 4.f, x, y - 12.f, 0) != 1)
         return 0;
 
     Vec3 left;
@@ -2114,7 +2123,6 @@ static int Lab_GroundEdge(FighterData *data, int *out_dir, float *out_dist)
     GrColl_GetGroundLineEndLeft(line, &left);
     GrColl_GetGroundLineEndRight(line, &right);
 
-    float x = data->phys.pos.X;
     float to_left = x - left.X;
     float to_right = right.X - x;
 
