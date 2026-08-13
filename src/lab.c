@@ -652,6 +652,38 @@ void Lab_ChangeComboPreset(GOBJ *menu_gobj, int preset_id)
 
 int CPUAction_CheckASID(GOBJ *cpu, int asid_kind);
 
+// The combo menu's shortcut options write straight through to the real CPU
+// options, so there is only ever one source of truth.
+void Lab_ChangeComboDI(GOBJ *menu_gobj, int value)
+{
+    LabOptions_CPU[OPTCPU_TDI].val = value;
+}
+
+void Lab_ChangeComboSDINum(GOBJ *menu_gobj, int value)
+{
+    LabOptions_CPU[OPTCPU_SDINUM].val = value;
+}
+
+void Lab_ChangeComboSDIDir(GOBJ *menu_gobj, int value)
+{
+    LabOptions_CPU[OPTCPU_SDIDIR].val = value;
+}
+
+void Lab_ChangeComboTech(GOBJ *menu_gobj, int value)
+{
+    LabOptions_Tech[OPTTECH_TECH].val = value;
+}
+
+// Pull the real options back into the shortcuts, so changing something in
+// CPU Options is reflected here too.
+static void Lab_SyncComboShortcuts(void)
+{
+    LabOptions_Combo[OPTCOMBO_DI].val = LabOptions_CPU[OPTCPU_TDI].val;
+    LabOptions_Combo[OPTCOMBO_SDINUM].val = LabOptions_CPU[OPTCPU_SDINUM].val;
+    LabOptions_Combo[OPTCOMBO_SDIDIR].val = LabOptions_CPU[OPTCPU_SDIDIR].val;
+    LabOptions_Combo[OPTCOMBO_TECH].val = LabOptions_Tech[OPTTECH_TECH].val;
+}
+
 // Returns true once the CPU has settled out of a combo and is free to act.
 static int Lab_ComboHasEnded(GOBJ *cpu, FighterData *cpu_data)
 {
@@ -6740,6 +6772,7 @@ void Event_Think(GOBJ *event)
     LabOptions_General[OPTGEN_HMNPCNT].val = hmn_data->dmg.percent;
     LabOptions_CPU[OPTCPU_PCNT].val = cpu_data->dmg.percent;
 
+    Lab_SyncComboShortcuts();
     Lab_ComboResetThink(cpu, cpu_data, eventData);
     
     // reset stale moves

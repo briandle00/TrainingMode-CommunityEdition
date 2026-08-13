@@ -17,6 +17,7 @@ static EventMenu LabMenu_CPU;
 static EventMenu LabMenu_AdvCounter;
 static EventMenu LabMenu_Record;
 static EventMenu LabMenu_Tech;
+static EventMenu LabMenu_Combo;
 static EventMenu LabMenu_Stage_FOD;
 static EventMenu LabMenu_CustomOSDs;
 static EventMenu LabMenu_SlotManagement;
@@ -890,66 +891,6 @@ enum lab_option
 };
 
 static const char *LabOptions_CheckBox[] = {"", "X"};
-
-// COMBO TRAINING MENU --------------------------------------------------------
-
-enum lab_combo_option
-{
-    OPTCOMBO_PRESET,
-    OPTCOMBO_RESET,
-    OPTCOMBO_DELAY,
-
-    OPTCOMBO_COUNT
-};
-
-enum lab_combo_preset
-{
-    COMBOPRESET_CUSTOM,
-    COMBOPRESET_BASIC,
-    COMBOPRESET_MIXUP,
-    COMBOPRESET_ESCAPE,
-
-    COMBOPRESET_COUNT
-};
-
-static const char *LabValues_ComboPresets[] = {"Custom", "Basic", "DI Mixup", "Escape Drill"};
-
-static EventOption LabOptions_Combo[OPTCOMBO_COUNT] = {
-    {
-        .kind = OPTKIND_STRING,
-        .value_num = countof(LabValues_ComboPresets),
-        .name = "Combo Preset",
-        .desc = {"Apply a set of CPU options for combo practice.",
-                 "Changing anything afterwards is fine - the preset",
-                 "is only applied when you pick it."},
-        .values = LabValues_ComboPresets,
-        .OnChange = Lab_ChangeComboPreset,
-    },
-    {
-        .kind = OPTKIND_TOGGLE,
-        .name = "Auto Reset",
-        .desc = {"Return to the saved position once the CPU",
-                 "recovers from a combo."},
-        .val = 0,
-        .OnChange = Lab_ChangeComboReset,
-    },
-    {
-        .kind = OPTKIND_INT,
-        .value_num = 121,
-        .val = 30,
-        .value_min = 0,
-        .name = "Reset Delay",
-        .desc = {"Frames to wait after the CPU is actionable",
-                 "before resetting."},
-        .format = "%d",
-    },
-};
-
-static EventMenu LabMenu_Combo = {
-    .name = "Combo Training",
-    .option_num = countof(LabOptions_Combo),
-    .options = LabOptions_Combo,
-};
 
 static EventOption LabOptions_Main[OPTLAB_COUNT] = {
     {
@@ -2756,6 +2697,121 @@ static EventMenu LabMenu_Tech = {
     .name = "Tech Options",
     .option_num = sizeof(LabOptions_Tech) / sizeof(EventOption),
     .options = LabOptions_Tech,
+};
+
+// COMBO TRAINING MENU --------------------------------------------------------
+
+enum lab_combo_option
+{
+    OPTCOMBO_PRESET,
+    OPTCOMBO_RESET,
+    OPTCOMBO_DELAY,
+    OPTCOMBO_DI,
+    OPTCOMBO_SDINUM,
+    OPTCOMBO_SDIDIR,
+    OPTCOMBO_TECH,
+    OPTCOMBO_CPUMENU,
+    OPTCOMBO_TECHMENU,
+
+    OPTCOMBO_COUNT
+};
+
+enum lab_combo_preset
+{
+    COMBOPRESET_CUSTOM,
+    COMBOPRESET_BASIC,
+    COMBOPRESET_MIXUP,
+    COMBOPRESET_ESCAPE,
+
+    COMBOPRESET_COUNT
+};
+
+static const char *LabValues_ComboPresets[] = {"Custom", "Basic", "DI Mixup", "Escape Drill"};
+
+static EventOption LabOptions_Combo[OPTCOMBO_COUNT] = {
+    {
+        .kind = OPTKIND_STRING,
+        .value_num = countof(LabValues_ComboPresets),
+        .name = "Combo Preset",
+        .desc = {"Apply a set of CPU options for combo practice.",
+                 "Changing anything afterwards is fine - the preset",
+                 "is only applied when you pick it."},
+        .values = LabValues_ComboPresets,
+        .OnChange = Lab_ChangeComboPreset,
+    },
+    {
+        .kind = OPTKIND_TOGGLE,
+        .name = "Auto Reset",
+        .desc = {"Return to the saved position once the CPU",
+                 "recovers from a combo."},
+        .val = 0,
+        .OnChange = Lab_ChangeComboReset,
+    },
+    {
+        .kind = OPTKIND_INT,
+        .value_num = 121,
+        .val = 30,
+        .value_min = 0,
+        .name = "Reset Delay",
+        .desc = {"Frames to wait after the CPU is actionable",
+                 "before resetting."},
+        .format = "%d",
+    },
+
+    // The options below are shortcuts. They write straight through to the
+    // real CPU options, and are kept in sync with them every frame, so
+    // changing one here or in CPU Options is the same thing.
+    {
+        .kind = OPTKIND_STRING,
+        .value_num = countof(LabValues_TDI),
+        .name = "DI Behavior",
+        .desc = {"Shortcut for CPU Options -> Trajectory DI."},
+        .values = LabValues_TDI,
+        .OnChange = Lab_ChangeComboDI,
+    },
+    {
+        .kind = OPTKIND_INT,
+        .value_num = 8,
+        .name = "SDI Amount",
+        .desc = {"Shortcut for CPU Options -> Smash DI Amount."},
+        .format = "%d Frames",
+        .OnChange = Lab_ChangeComboSDINum,
+    },
+    {
+        .kind = OPTKIND_STRING,
+        .value_num = countof(LabValues_SDIDir),
+        .name = "SDI Direction",
+        .desc = {"Shortcut for CPU Options -> Smash DI Direction."},
+        .values = LabValues_SDIDir,
+        .OnChange = Lab_ChangeComboSDIDir,
+    },
+    {
+        .kind = OPTKIND_STRING,
+        .value_num = countof(LabValues_Tech),
+        .name = "Tech Option",
+        .desc = {"Shortcut for Tech Options -> Tech Option."},
+        .values = LabValues_Tech,
+        .OnChange = Lab_ChangeComboTech,
+    },
+    {
+        .kind = OPTKIND_MENU,
+        .menu = &LabMenu_CPU,
+        .name = "All CPU Options",
+        .desc = {"Everything else - counter actions, shielding,",
+                 "percent, mash out and position."},
+    },
+    {
+        .kind = OPTKIND_MENU,
+        .menu = &LabMenu_Tech,
+        .name = "All Tech Options",
+        .desc = {"Tech and getup chances, lockout and tech traps."},
+    },
+};
+
+static EventMenu LabMenu_Combo = {
+    .name = "Combo Training",
+    .option_num = countof(LabOptions_Combo),
+    .options = LabOptions_Combo,
 };
 
 // PLAYBACK CHANCES MENU -----------------------------------------------------
