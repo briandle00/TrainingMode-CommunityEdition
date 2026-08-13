@@ -56,6 +56,7 @@ Sent upstream as [#351].
 | Reset Delay | frames to wait before resetting |
 | Escape Option | Custom / Airdodge / Double Jump / Attack |
 | Percent Switch | swap the whole CPU and tech setup at this percent, 0 disables |
+| Set Switch to Knockdown % | set the switch to where the last move used starts knocking down |
 | Save as Low Percent | snapshot every CPU and tech option as the low set |
 | Save as High Percent | snapshot every CPU and tech option as the high set |
 | Randomize Position | Off / On Stage / On Platform / Anywhere |
@@ -107,6 +108,15 @@ either `Range`, picking anywhere between a lowest and highest number of windups,
 or `None or Full`, which only ever gives 0 or a full punch — the two cases that
 change what DK actually threatens. `Show Charge` puts the result on screen: full,
 none, or `n/10`.
+
+**Set Switch to Knockdown %** reads the last move to hit the CPU — its damage,
+knockback growth and base knockback straight off the hitbox — and solves melee's
+knockback formula against the CPU's weight for the percent where knockback first
+reaches 80, the point it gets taken off its feet. Hit the CPU with the move you
+care about, then pick this. Being computed from the actual hitbox and the actual
+matchup, it works for any move on any character rather than needing a table. Set
+knockback moves report that they have no such percent, since they ignore percent
+by definition.
 
 **Percent profiles** snapshot the entire `LabOptions_CPU` and `LabOptions_Tech`
 value sets. Configure a low percent setup, save it, configure a kill percent one,

@@ -2140,6 +2140,78 @@ static int Lab_GroundEdge(FighterData *data, int *out_dir, float *out_dist)
     return 1;
 }
 
+static void Lab_UpdateOptionAvailability(void);
+
+// Menu hook. Greying is recomputed every frame anyway, but the menu draws
+// before Event_Update runs, so without this a row only changes appearance
+// after the cursor moves and forces a redraw.
+void Lab_RefreshAvailability(GOBJ *menu_gobj, int value)
+{
+    Lab_UpdateOptionAvailability();
+}
+
+// The last move to hit the CPU, kept so the knockdown percent can be worked out
+// for whatever was just used rather than from a table of hardcoded moves.
+static int last_hit_dmg = 0;
+static int last_hit_kbg = 0;
+static int last_hit_bkb = 0;
+static int last_hit_set_kb = 0;
+
+// Melee's knockback formula. Percent is the victim's damage before the hit.
+static float Lab_Knockback(int percent, int dmg, int kbg, int bkb, float weight)
+{
+    float p = (float)(percent + dmg);
+    float d = (float)dmg;
+
+    float kb = ((((p / 10.0f) + ((p * d) / 20.0f))
+                 * (200.0f / (weight + 100.0f)) * 1.4f) + 18.0f)
+               * ((float)kbg / 100.0f) + (float)bkb;
+
+    return kb;
+}
+
+// Percent at which a move first knocks the CPU down. Knockback of 80 is where
+// the victim is taken off their feet into tumble. Returns -1 when the move
+// never gets there, which is what set knockback moves do.
+static int Lab_KnockdownPercent(FighterData *cpu_data)
+{
+    if (last_hit_dmg == 0 && last_hit_bkb == 0)
+        return -1;
+    if (last_hit_set_kb != 0)
+        return -1; // set knockback ignores percent entirely
+
+    float weight = cpu_data->attr.weight;
+
+    for (int p = 0; p <= 999; ++p)
+    {
+        if (Lab_Knockback(p, last_hit_dmg, last_hit_kbg, last_hit_bkb, weight) >= 80.0f)
+            return p;
+    }
+
+    return -1;
+}
+
+void Lab_ComboSetKnockdownPercent(GOBJ *menu_gobj)
+{
+    GOBJ *cpu = Fighter_GetGObj(1);
+    if (cpu == 0)
+        return;
+
+    FighterData *cpu_data = cpu->userdata;
+    int percent = Lab_KnockdownPercent(cpu_data);
+
+    if (percent < 0)
+    {
+        event_vars->Message_Display(OSD_Miscellaneous, 0, MSGCOLOR_RED,
+                                    "No move to read - hit the CPU first");
+        return;
+    }
+
+    LabOptions_Combo[OPTCOMBO_PCNTSWITCH].val = percent;
+    event_vars->Message_Display(OSD_Miscellaneous, 0, MSGCOLOR_GREEN,
+                                "Knocks down at %d%%", percent);
+}
+
 // Frames after a roll during which slideoff still counts as following it. By
 // the time a hit lands the roll is two states back - roll, then wait, then the
 // damage state - so checking the previous state alone never matched.
@@ -2282,6 +2354,20 @@ void CPUOnHit(void) {
 
     // percent may have crossed the switch point since the last hit
     Lab_ComboProfileOnHit(cpu_data);
+
+    // remember the move, so its knockdown percent can be worked out on demand
+    for (int i = 0; i < (int)countof(hmn_data->hitbox); ++i)
+    {
+        ftHit *h = &hmn_data->hitbox[i];
+        if (!h->active)
+            continue;
+
+        last_hit_dmg = h->dmg;
+        last_hit_kbg = h->kb_growth;
+        last_hit_bkb = h->kb;
+        last_hit_set_kb = h->wdsk;
+        break;
+    }
     
     // if set during TDI calc, SDI and ASDI will override and follow suit
     CustomTDI *custom_di = NULL;
