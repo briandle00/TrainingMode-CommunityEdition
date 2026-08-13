@@ -1810,14 +1810,6 @@ void CPUResetVars(void) {
 // landed while a hitbox is still live is a multihit link in practice.
 #define SDI_MULTIHIT_KB 1.6f
 
-// How far below to look for a landing when the CPU is going to fall anyway.
-// Larger than raw SDI reach because the knockback brings it most of the way.
-#define SDI_FALL_LOOKAHEAD 25.0f
-
-// Upward knockback above this means the CPU is still climbing, so the ground is
-// not coming soon however close it looks underneath.
-#define SDI_RISING_SPEED 0.5f
-
 // Is there ground within `reach` below (x, y)? Optionally reports the drop
 // distance so two candidates can be compared.
 static int Lab_GroundBelow(float x, float y, float reach, float *out_drop)
@@ -1864,46 +1856,29 @@ static ftHit *Lab_NearestActiveHitbox(FighterData *hmn_data, FighterData *cpu_da
     return nearest;
 }
 
-// Will this hit put the CPU on the floor? The light damage states - DamageHi,
-// DamageN, DamageLw, DamageAir - land normally and the CPU can act straight
-// away. DamageFly and tumble are the ones that end in a knockdown.
-static int Lab_WillBeKnockedDown(FighterData *cpu_data)
-{
-    int state = cpu_data->state_id;
-
-    if (state == ASID_DAMAGEFALL)
-        return 1;
-
-    return (ASID_DAMAGEFLYHI <= state && state <= ASID_DAMAGEFLYROLL);
-}
-
-// Smart SDI, in priority order:
-//   1. already grounded - nothing vertical to gain, so make distance instead
-//   2. the hit will not knock the CPU down and there is ground to reach - SDI
-//      down, because landing from a light hit means acting again immediately
-//   3. ground straight below and in reach - SDI down to land and reset
-//   3. ground off to one side in reach - SDI diagonally onto it, which is what
-//      picks up platforms and stage edges
-//   4. an active hitbox on the attacker - escape it, by the shape of the hit:
-//      a weak hit is a multihit link, so break out sideways where the move
-//      cannot follow; a vertical launch is a juggle, answered by falling out
-//      to the ground if the launch is weak enough to make that realistic and
-//      by height if it is not;
-//      horizontal launch with the attacker running through the CPU means SDI
-//      in behind them so they carry past; otherwise straight out of the hitbox.
-//   5. no hitbox and nothing to land on - same read on the knockback, with
-//      horizontal carry answered by SDIing back in against it.
+// Smart SDI. Order matters more than any single rule here, so it is:
 //
-// Reach scales with the Smash DI Amount option, so a CPU set to few inputs
-// correctly decides it cannot reach things a CPU set to many inputs can.
+//   1. already grounded          - nothing vertical to gain, make distance
+//   2. attacker moving through   - SDI in behind them, whatever the hit is
+//   3. weak hit, hitbox live     - a multihit link, break out sideways
+//   4. light hit, ground in SDI reach - land and be free to act immediately
+//   5. ground or platform in SDI reach - land and reset
+//   6. vertical launch           - a juggle, so up and away for height
+//   7. horizontal launch         - being carried out, SDI back in
 //
-// This still decides from the state at hit time and does not simulate the
-// trajectory forward.
+// Escaping a live multihit outranks trying to land, because more hits arrive
+// before the CPU ever reaches the floor. Landing only outranks the juggle and
+// carry reads, which apply to a hit that has already finished sending the CPU.
+//
+// "In reach" means a downward raycast of 6 units per SDI input - what SDI can
+// actually move on its own. There is no fall lookahead: guessing that gravity
+// will cover the rest made almost every aerial hit read as groundable.
 static void Lab_SmartSDI(LabData *eventData, FighterData *cpu_data,
-                           FighterData *hmn_data, float kb_angle)
+                         FighterData *hmn_data, float kb_angle)
 {
     int away = -Fighter_GetOpponentDir(cpu_data, hmn_data);
 
+    // 1. already on the floor
     if (cpu_data->phys.air_state == 0)
     {
         eventData->cpu_sdi_lstick_x = 127 * away;
@@ -1919,28 +1894,56 @@ static void Lab_SmartSDI(LabData *eventData, FighterData *cpu_data,
     float x = cpu_data->phys.pos.X;
     float y = cpu_data->phys.pos.Y;
 
-    // If the hit is light enough not to knock the CPU down, landing means it
-    // simply touches down and is free to act - no tech, no getup, no follow up.
-    // That is the best thing SDI can buy, so it outranks everything below, but
-    // only when there is actually ground to reach. The lookahead is longer than
-    // raw SDI reach because a light hit barely moves the CPU and gravity does
-    // the rest.
-    // Being launched upward means the CPU has to travel up and come back down
-    // before the floor matters, so it does not get the fall lookahead. Without
-    // this a light up air keeps reading as "ground is reachable" and the CPU
-    // SDIs down while climbing, which is never the answer.
-    int rising = cpu_data->phys.kb_vel.Y > SDI_RISING_SPEED;
-    float ground_reach = rising ? reach : reach + SDI_FALL_LOOKAHEAD;
+    float kb_x = cpu_data->phys.kb_vel.X;
+    float kb_y = cpu_data->phys.kb_vel.Y;
+    float abs_kb_x = kb_x < 0.f ? -kb_x : kb_x;
+    float abs_kb_y = kb_y < 0.f ? -kb_y : kb_y;
+    float kb_mag = sqrtf(kb_x * kb_x + kb_y * kb_y);
 
-    if (!Lab_WillBeKnockedDown(cpu_data) &&
-        Lab_GroundBelow(x, y, ground_reach, 0))
+    ftHit *hit = Lab_NearestActiveHitbox(hmn_data, cpu_data);
+
+    if (hit != 0)
     {
-        eventData->cpu_sdi_lstick_x = 0;
-        eventData->cpu_sdi_lstick_y = -127;
-        return;
+        // 2. an attacker travelling through the CPU is answered first, whatever
+        // the hit is. Breaking out "away" from an approaching drill slides the
+        // CPU along in front of it and makes the move easier to land - the
+        // escape is behind them.
+        float atk_vel = hmn_data->phys.self_vel.X;
+        float abs_atk_vel = atk_vel < 0.f ? -atk_vel : atk_vel;
+
+        if (abs_atk_vel >= SDI_ATTACKER_CARRY_SPEED)
+        {
+            eventData->cpu_sdi_lstick_x = (atk_vel > 0.f) ? -127 : 127;
+            eventData->cpu_sdi_lstick_y = 0;
+            return;
+        }
+
+        // 3. a weak hit with a hitbox still live is a multihit link - fox's up
+        // air, a planted drill, marth's dancing blade. More hits land before
+        // the CPU could ever reach the floor, so escaping the move beats
+        // reaching for the ground. Sideways is the separation it cannot follow.
+        if (kb_mag < SDI_MULTIHIT_KB)
+        {
+            float out_x = x - hit->pos.X;
+            int dir;
+
+            if (out_x > 0.5f)
+                dir = 1;
+            else if (out_x < -0.5f)
+                dir = -1;
+            else
+                dir = away; // sat on the hitbox axis, pick the open side
+
+            eventData->cpu_sdi_lstick_x = 127 * dir;
+            eventData->cpu_sdi_lstick_y = 0;
+            return;
+        }
     }
 
-    // straight down onto something
+    // 4. a hit light enough to leave the CPU standing means landing is free
+    // action - no knockdown, no tech, no getup.
+    // 5. otherwise landing at least resets the situation.
+    // Both need the floor within what SDI alone can cover.
     if (Lab_GroundBelow(x, y, reach, 0))
     {
         eventData->cpu_sdi_lstick_x = 0;
@@ -1962,96 +1965,19 @@ static void Lab_SmartSDI(LabData *eventData, FighterData *cpu_data,
         return;
     }
 
-    // get out of whatever is currently hitting us
-    float kb_x = cpu_data->phys.kb_vel.X;
-    float kb_y = cpu_data->phys.kb_vel.Y;
-    float abs_kb_x = kb_x < 0.f ? -kb_x : kb_x;
-    float abs_kb_y = kb_y < 0.f ? -kb_y : kb_y;
-
-    ftHit *hit = Lab_NearestActiveHitbox(hmn_data, cpu_data);
-    if (hit != 0)
+    // nothing to land on, so read the launch
+    if (abs_kb_y >= abs_kb_x)
     {
-        float kb_mag = sqrtf(kb_x * kb_x + kb_y * kb_y);
-
-        float atk_vel = hmn_data->phys.self_vel.X;
-        float abs_atk_vel = atk_vel < 0.f ? -atk_vel : atk_vel;
-
-        // An attacker moving through the CPU has to be answered first, whatever
-        // the hit is. Breaking out "away" from an approaching drill just slides
-        // the CPU along in front of it and makes the move easier to land - the
-        // escape is behind them, so SDI in against their movement and let them
-        // carry past.
-        if (abs_atk_vel >= SDI_ATTACKER_CARRY_SPEED)
-        {
-            eventData->cpu_sdi_lstick_x = (atk_vel > 0.f) ? -127 : 127;
-            eventData->cpu_sdi_lstick_y = 0;
-            return;
-        }
-
-        // A weak hit with a hitbox still live is a link in a multihit, not a
-        // launcher - fox's up air, a planted drill, marth's dancing blade.
-        // These carry the CPU along with the move, so the vertical read below
-        // is exactly wrong: SDIing up into fox's up air rides it and eats every
-        // remaining hit. Break out sideways instead.
-        if (kb_mag < SDI_MULTIHIT_KB)
-        {
-            float out_x = x - hit->pos.X;
-            int dir;
-
-            if (out_x > 0.5f)
-                dir = 1;
-            else if (out_x < -0.5f)
-                dir = -1;
-            else
-                dir = away; // sat on the hitbox axis, pick the open side
-
-            eventData->cpu_sdi_lstick_x = 127 * dir;
-            eventData->cpu_sdi_lstick_y = 0;
-            return;
-        }
-
-        // A vertical launch is a juggle - dk's up air string, fox's up air,
-        // marth's up tilt. The answer in play is height: SDI up and away to
-        // clear the top of the hitbox, get above follow up range, and end up
-        // nearer a platform to land on. Going down here just falls back into
-        // the attacker.
-        if (abs_kb_y >= abs_kb_x)
-        {
-            eventData->cpu_sdi_lstick_x = 90 * away;
-            eventData->cpu_sdi_lstick_y = 90;
-            return;
-        }
-
-        // attacker is planted, so just leave the hitbox the short way
-        float dx = x - hit->pos.X;
-        float dy = y - hit->pos.Y;
-
-        if (dx == 0.f && dy == 0.f)
-        {
-            eventData->cpu_sdi_lstick_x = 0;
-            eventData->cpu_sdi_lstick_y = 127;
-            return;
-        }
-
-        float len = sqrtf(dx * dx + dy * dy);
-        eventData->cpu_sdi_lstick_x = (s8)((dx / len) * 127.f);
-        eventData->cpu_sdi_lstick_y = (s8)((dy / len) * 127.f);
+        // 6. juggled - height clears the top of the hitbox, gets above follow
+        // up range, and ends nearer a platform to land on
+        eventData->cpu_sdi_lstick_x = 90 * away;
+        eventData->cpu_sdi_lstick_y = 90;
         return;
     }
 
-    // nothing hitting us and nowhere to land - read the knockback instead
-    if (abs_kb_y >= abs_kb_x)
-    {
-        // juggled - same answer as above, get height and separation
-        eventData->cpu_sdi_lstick_x = 90 * away;
-        eventData->cpu_sdi_lstick_y = 90;
-    }
-    else
-    {
-        // being carried horizontally - SDI back against it to stay in
-        eventData->cpu_sdi_lstick_x = (kb_x > 0.f) ? -127 : 127;
-        eventData->cpu_sdi_lstick_y = 0;
-    }
+    // 7. carried horizontally - SDI back against it to stay in
+    eventData->cpu_sdi_lstick_x = (kb_x > 0.f) ? -127 : 127;
+    eventData->cpu_sdi_lstick_y = 0;
 }
 
 static void Lab_ComboProfileOnHit(FighterData *cpu_data);
