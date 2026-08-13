@@ -606,6 +606,10 @@ static void Lab_ChangeInfoPreset(EventOption options[], int preset_id)
 static int combo_reset_timer = 0;
 // Set once the CPU has taken a hit, so an untouched CPU never triggers a reset.
 static int combo_was_hit = 0;
+// Cleared setups in a row, and how the current attempt is going.
+static int combo_streak = 0;
+static int combo_attempt_hits = 0;
+static int combo_attempt_killed = 0;
 // Frames the CPU has been free of hitstun and hitlag. Backstop so a CPU that
 // never settles - drifting offstage, stuck in a recovery - still resets.
 static int combo_idle_frames = 0;
@@ -618,6 +622,9 @@ void Lab_ChangeComboReset(GOBJ *menu_gobj, int value)
     combo_reset_timer = 0;
     combo_was_hit = 0;
     combo_idle_frames = 0;
+    combo_streak = 0;
+    combo_attempt_hits = 0;
+    combo_attempt_killed = 0;
 }
 
 int CPUAction_CheckASID(GOBJ *cpu, int asid_kind);
@@ -744,6 +751,217 @@ static void Lab_ComboProfileOnHit(FighterData *cpu_data)
 
 
 // Returns true once the CPU has settled out of a combo and is free to act.
+// --- randomized setups ------------------------------------------------------
+
+// DK's Giant Punch charge lives in the first character specific variable and
+// counts windups, 0 to 10.
+#define DK_PUNCH_CHARGE_MAX 10
+#define DK_PUNCH_CHARGE_VAR ft_var1
+
+// How far out to look for somewhere to stand, and how many attempts to make
+// before giving up and leaving the fighters where they are.
+#define COMBO_PLACE_RANGE 90.0f
+#define COMBO_PLACE_TRIES 24
+#define COMBO_PLACE_TOP 60.0f
+#define COMBO_PLACE_DROP 160.0f
+
+// A platform is ground meaningfully above the main stage floor.
+#define COMBO_PLATFORM_MIN_HEIGHT 8.0f
+
+static float Lab_RandomRangeF(float low, float high)
+{
+    return low + (high - low) * HSD_Randf();
+}
+
+// Height of the main stage floor, used to tell platforms from the stage.
+static float Lab_StageFloorY(void)
+{
+    Vec3 coll_pos;
+    int line_index;
+    int line_kind;
+    Vec3 line_unk;
+
+    if (GrColl_RaycastGround(&coll_pos, &line_index, &line_kind, &line_unk,
+                             -1, -1, -1, 0, 0.f, COMBO_PLACE_TOP, 0.f,
+                             -COMBO_PLACE_DROP, 0) == 1)
+        return coll_pos.Y;
+
+    return 0.f;
+}
+
+// Finds somewhere to stand matching the requested zone. Returns 0 if nothing
+// suitable turned up, in which case the caller leaves the fighters alone.
+static int Lab_ComboFindSpot(int zone, Vec3 *out_pos, int *out_line)
+{
+    float floor_y = Lab_StageFloorY();
+
+    for (int i = 0; i < COMBO_PLACE_TRIES; ++i)
+    {
+        float x = Lab_RandomRangeF(-COMBO_PLACE_RANGE, COMBO_PLACE_RANGE);
+
+        Vec3 coll_pos;
+        int line_index;
+        int line_kind;
+        Vec3 line_unk;
+
+        if (GrColl_RaycastGround(&coll_pos, &line_index, &line_kind, &line_unk,
+                                 -1, -1, -1, 0, x, COMBO_PLACE_TOP, x,
+                                 -COMBO_PLACE_DROP, 0) != 1)
+            continue;
+
+        int is_platform = (coll_pos.Y - floor_y) > COMBO_PLATFORM_MIN_HEIGHT;
+
+        if (zone == RNDPOS_STAGE && is_platform)
+            continue;
+        if (zone == RNDPOS_PLATFORM && !is_platform)
+            continue;
+
+        *out_pos = coll_pos;
+        *out_line = line_index;
+        return 1;
+    }
+
+    return 0;
+}
+
+// Drops a fighter onto a found spot, facing the given direction.
+static void Lab_ComboPlaceFighter(GOBJ *fighter, Vec3 *pos, int line_index, float facing)
+{
+    FighterData *data = fighter->userdata;
+
+    data->phys.pos = *pos;
+    data->coll_data.ground_index = line_index;
+    data->facing_direction = facing;
+    data->phys.air_state = 0;
+
+    Fighter_KillAllVelocity(fighter);
+    Fighter_EnterWait(fighter);
+
+    data->coll_data.topN_Curr = data->phys.pos;
+    Coll_ECBCurrToPrev(&data->coll_data);
+    data->cb.Coll(fighter);
+}
+
+static void Lab_ComboRandomizeDKPunch(FighterData *hmn_data)
+{
+    if (hmn_data->kind != FTKIND_DK)
+        return;
+    if (LabOptions_ComboDK[OPTDK_RANDOMIZE].val == 0)
+        return;
+
+    int low = LabOptions_ComboDK[OPTDK_MIN].val;
+    int high = LabOptions_ComboDK[OPTDK_MAX].val;
+    if (low > high)
+    {
+        int swap = low;
+        low = high;
+        high = swap;
+    }
+
+    int charge = low + HSD_Randi((high - low) + 1);
+    hmn_data->fighter_var.DK_PUNCH_CHARGE_VAR = charge;
+
+    if (LabOptions_ComboDK[OPTDK_OSD].val)
+    {
+        if (charge >= DK_PUNCH_CHARGE_MAX)
+            event_vars->Message_Display(OSD_Miscellaneous, hmn_data->ply,
+                                        MSGCOLOR_GREEN, "Punch: Full");
+        else if (charge == 0)
+            event_vars->Message_Display(OSD_Miscellaneous, hmn_data->ply,
+                                        MSGCOLOR_WHITE, "Punch: None");
+        else
+            event_vars->Message_Display(OSD_Miscellaneous, hmn_data->ply,
+                                        MSGCOLOR_YELLOW, "Punch: %d/%d",
+                                        charge, DK_PUNCH_CHARGE_MAX);
+    }
+}
+
+// Builds a fresh setup: where both fighters stand, which way the player faces,
+// what percent the CPU is on, and any character specific state. Each piece is
+// independent, so any combination of the options works.
+static void Lab_ComboRandomizeSetup(GOBJ *hmn, FighterData *hmn_data,
+                                    GOBJ *cpu, FighterData *cpu_data)
+{
+    int zone = LabOptions_Combo[OPTCOMBO_RNDPOS].val;
+
+    float facing = hmn_data->facing_direction;
+    if (LabOptions_Combo[OPTCOMBO_RNDFACING].val)
+        facing = HSD_Randi(2) ? 1.f : -1.f;
+
+    if (zone != RNDPOS_OFF)
+    {
+        Vec3 spot;
+        int line_index;
+
+        if (Lab_ComboFindSpot(zone, &spot, &line_index))
+        {
+            Lab_ComboPlaceFighter(hmn, &spot, line_index, facing);
+
+            // CPU goes just in front, the same as pressing DPad down
+            Vec3 cpu_spot = spot;
+            cpu_spot.X += facing * 10.0f;
+
+            Vec3 cpu_ground;
+            int cpu_line;
+            Vec3 line_unk;
+            int line_kind;
+
+            if (GrColl_RaycastGround(&cpu_ground, &cpu_line, &line_kind, &line_unk,
+                                     -1, -1, -1, 0, cpu_spot.X, spot.Y + 5.f,
+                                     cpu_spot.X, spot.Y - 20.f, 0) == 1)
+                Lab_ComboPlaceFighter(cpu, &cpu_ground, cpu_line, -facing);
+            else
+                Lab_ComboPlaceFighter(cpu, &cpu_spot, line_index, -facing);
+        }
+    }
+    else if (LabOptions_Combo[OPTCOMBO_RNDFACING].val)
+    {
+        hmn_data->facing_direction = facing;
+        cpu_data->facing_direction = -facing;
+    }
+
+    if (LabOptions_Combo[OPTCOMBO_RNDPCNT].val)
+    {
+        int low = LabOptions_Combo[OPTCOMBO_PCNTMIN].val;
+        int high = LabOptions_Combo[OPTCOMBO_PCNTMAX].val;
+        if (low > high)
+        {
+            int swap = low;
+            low = high;
+            high = swap;
+        }
+
+        int percent = low + HSD_Randi((high - low) + 1);
+        cpu_data->dmg.percent = percent;
+        Fighter_SetHUDDamage(cpu_data->ply, percent);
+    }
+
+    Lab_ComboRandomizeDKPunch(hmn_data);
+}
+
+// Did the last attempt clear its goal?
+static int Lab_ComboGoalMet(void)
+{
+    switch (LabOptions_Combo[OPTCOMBO_GOAL].val)
+    {
+    case COMBOGOAL_HITS:
+        return combo_attempt_hits >= LabOptions_Combo[OPTCOMBO_GOALHITS].val;
+    case COMBOGOAL_KILL:
+        return combo_attempt_killed;
+    default:
+        return 1; // no goal set, so every attempt counts as cleared
+    }
+}
+
+// Whether anything about the setup is randomized at all.
+static int Lab_ComboRandomizes(void)
+{
+    return LabOptions_Combo[OPTCOMBO_RNDPOS].val != RNDPOS_OFF ||
+           LabOptions_Combo[OPTCOMBO_RNDFACING].val ||
+           LabOptions_Combo[OPTCOMBO_RNDPCNT].val ||
+           LabOptions_ComboDK[OPTDK_RANDOMIZE].val;
+}
+
 // The countdown starts as soon as the CPU can act again. Waiting for its state
 // machine to unwind all the way back to idle - counter action, then recovery,
 // then settle - stacks tens of frames on top of the delay and hands back far
@@ -758,7 +976,8 @@ static int Lab_ComboHasEnded(GOBJ *cpu, FighterData *cpu_data, LabData *eventDat
 }
 
 // Counts down once the combo is over and restores the saved position.
-static void Lab_ComboResetThink(GOBJ *cpu, FighterData *cpu_data, LabData *eventData)
+static void Lab_ComboResetThink(GOBJ *hmn, FighterData *hmn_data, GOBJ *cpu,
+                                FighterData *cpu_data, LabData *eventData)
 {
     if (LabOptions_Combo[OPTCOMBO_RESET].val == 0)
     {
@@ -769,6 +988,13 @@ static void Lab_ComboResetThink(GOBJ *cpu, FighterData *cpu_data, LabData *event
 
     if (eventData->cpu_hitnum > 0)
         combo_was_hit = 1;
+
+    // track the best the attempt managed, since cpu_hitnum is cleared when the
+    // CPU's state machine resets
+    if (eventData->cpu_hitnum > combo_attempt_hits)
+        combo_attempt_hits = eventData->cpu_hitnum;
+    if (cpu_data->flags.dead)
+        combo_attempt_killed = 1;
 
     if (!combo_was_hit)
     {
@@ -813,6 +1039,28 @@ static void Lab_ComboResetThink(GOBJ *cpu, FighterData *cpu_data, LabData *event
         return;
 
     event_vars->Savestate_Load_v1(event_vars->savestate, 0);
+
+    if (Lab_ComboRandomizes())
+    {
+        // A setup repeats until it has been cleared enough times in a row, so
+        // a missed attempt means another go at the same one.
+        if (Lab_ComboGoalMet())
+            combo_streak++;
+        else
+            combo_streak = 0;
+
+        if (combo_streak >= LabOptions_Combo[OPTCOMBO_GOALSTREAK].val)
+        {
+            combo_streak = 0;
+            Lab_ComboRandomizeSetup(hmn, hmn_data, cpu, cpu_data);
+
+            // resets from here on return to the new setup
+            event_vars->Savestate_Save_v1(event_vars->savestate, Savestate_Silent);
+        }
+    }
+
+    combo_attempt_hits = 0;
+    combo_attempt_killed = 0;
     combo_was_hit = 0;
     combo_idle_frames = 0;
 }
@@ -6977,7 +7225,7 @@ void Event_Think(GOBJ *event)
     LabOptions_General[OPTGEN_HMNPCNT].val = hmn_data->dmg.percent;
     LabOptions_CPU[OPTCPU_PCNT].val = cpu_data->dmg.percent;
 
-    Lab_ComboResetThink(cpu, cpu_data, eventData);
+    Lab_ComboResetThink(hmn, hmn_data, cpu, cpu_data, eventData);
     
     // reset stale moves
     if (LabOptions_General[OPTGEN_STALE].val == 0)
