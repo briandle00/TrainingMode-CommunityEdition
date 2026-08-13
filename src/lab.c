@@ -2150,12 +2150,94 @@ void Lab_RefreshAvailability(GOBJ *menu_gobj, int value)
     Lab_UpdateOptionAvailability();
 }
 
-// The last move to hit the CPU, kept so the knockdown percent can be worked out
-// for whatever was just used rather than from a table of hardcoded moves.
-static int last_hit_dmg = 0;
-static int last_hit_kbg = 0;
-static int last_hit_bkb = 0;
-static int last_hit_set_kb = 0;
+// Melee only exposes a move's damage, knockback growth and base knockback while
+// its hitbox is live, so there is nothing to read from cold. Instead every move
+// is recorded the first time its hitboxes come out, whether or not it connects,
+// and the menu picks from what has been seen.
+typedef struct KnockdownMove
+{
+    s16 dmg;
+    s16 kbg;
+    s16 bkb;
+    s16 set_kb;
+    u8 seen;
+} KnockdownMove;
+
+static KnockdownMove knockdown_moves[KDMOVE_COUNT];
+
+// Specials are character specific action states, so they cannot be identified
+// by state id the way the normal attacks can. Remember which special the player
+// most recently started from the direction held when B was pressed.
+static int last_special_move = KDMOVE_NEUTRALB;
+
+// Which entry does this action state belong to? -1 for anything that is not one
+// of the moves on the list.
+static int Lab_KnockdownSlotForState(int state)
+{
+    switch (state)
+    {
+    case ASID_ATTACK11:
+    case ASID_ATTACK12:
+    case ASID_ATTACK100START:  return KDMOVE_JAB;
+    case ASID_ATTACKDASH:      return KDMOVE_DASH;
+    case ASID_ATTACKS3S:
+    case ASID_ATTACKS3HI:
+    case ASID_ATTACKS3LW:      return KDMOVE_FTILT;
+    case ASID_ATTACKHI3:       return KDMOVE_UTILT;
+    case ASID_ATTACKLW3:       return KDMOVE_DTILT;
+    case ASID_ATTACKS4S:
+    case ASID_ATTACKS4HI:
+    case ASID_ATTACKS4LW:      return KDMOVE_FSMASH;
+    case ASID_ATTACKHI4:       return KDMOVE_USMASH;
+    case ASID_ATTACKLW4:       return KDMOVE_DSMASH;
+    case ASID_ATTACKAIRN:      return KDMOVE_NAIR;
+    case ASID_ATTACKAIRF:      return KDMOVE_FAIR;
+    case ASID_ATTACKAIRB:      return KDMOVE_BAIR;
+    case ASID_ATTACKAIRHI:     return KDMOVE_UAIR;
+    case ASID_ATTACKAIRLW:     return KDMOVE_DAIR;
+    }
+
+    // character specific states are the specials
+    if (state >= 0x155)
+        return last_special_move;
+
+    return -1;
+}
+
+// Watch the player's hitboxes and record whatever move they belong to.
+static void Lab_RecordKnockdownMoves(FighterData *hmn_data)
+{
+    HSD_Pad *pad = PadGetMaster(hmn_data->pad_index);
+    if (pad->down & HSD_BUTTON_B)
+    {
+        float sx = pad->fstickX;
+        float sy = pad->fstickY;
+        float ax = sx < 0.f ? -sx : sx;
+
+        if (sy > 0.5f)        last_special_move = KDMOVE_UPB;
+        else if (sy < -0.5f)  last_special_move = KDMOVE_DOWNB;
+        else if (ax > 0.5f)   last_special_move = KDMOVE_SIDEB;
+        else                  last_special_move = KDMOVE_NEUTRALB;
+    }
+
+    int slot = Lab_KnockdownSlotForState(hmn_data->state_id);
+    if (slot < 0)
+        return;
+
+    for (int i = 0; i < (int)countof(hmn_data->hitbox); ++i)
+    {
+        ftHit *h = &hmn_data->hitbox[i];
+        if (!h->active)
+            continue;
+
+        knockdown_moves[slot].dmg = h->dmg;
+        knockdown_moves[slot].kbg = h->kb_growth;
+        knockdown_moves[slot].bkb = h->kb;
+        knockdown_moves[slot].set_kb = h->wdsk;
+        knockdown_moves[slot].seen = 1;
+        return;
+    }
+}
 
 // Melee's knockback formula. Percent is the victim's damage before the hit.
 static float Lab_Knockback(int percent, int dmg, int kbg, int bkb, float weight)
@@ -2173,18 +2255,16 @@ static float Lab_Knockback(int percent, int dmg, int kbg, int bkb, float weight)
 // Percent at which a move first knocks the CPU down. Knockback of 80 is where
 // the victim is taken off their feet into tumble. Returns -1 when the move
 // never gets there, which is what set knockback moves do.
-static int Lab_KnockdownPercent(FighterData *cpu_data)
+static int Lab_KnockdownPercent(FighterData *cpu_data, KnockdownMove *move)
 {
-    if (last_hit_dmg == 0 && last_hit_bkb == 0)
-        return -1;
-    if (last_hit_set_kb != 0)
+    if (move->set_kb != 0)
         return -1; // set knockback ignores percent entirely
 
     float weight = cpu_data->attr.weight;
 
     for (int p = 0; p <= 999; ++p)
     {
-        if (Lab_Knockback(p, last_hit_dmg, last_hit_kbg, last_hit_bkb, weight) >= 80.0f)
+        if (Lab_Knockback(p, move->dmg, move->kbg, move->bkb, weight) >= 80.0f)
             return p;
     }
 
@@ -2198,18 +2278,30 @@ void Lab_ComboSetKnockdownPercent(GOBJ *menu_gobj)
         return;
 
     FighterData *cpu_data = cpu->userdata;
-    int percent = Lab_KnockdownPercent(cpu_data);
+
+    int slot = LabOptions_Combo[OPTCOMBO_KNOCKDOWNMOVE].val;
+    KnockdownMove *move = &knockdown_moves[slot];
+
+    if (!move->seen)
+    {
+        event_vars->Message_Display(OSD_Miscellaneous, 0, MSGCOLOR_RED,
+                                    "%s not used yet", LabValues_KnockdownMove[slot]);
+        return;
+    }
+
+    int percent = Lab_KnockdownPercent(cpu_data, move);
 
     if (percent < 0)
     {
         event_vars->Message_Display(OSD_Miscellaneous, 0, MSGCOLOR_RED,
-                                    "No move to read - hit the CPU first");
+                                    "%s never knocks down", LabValues_KnockdownMove[slot]);
         return;
     }
 
     LabOptions_Combo[OPTCOMBO_PCNTSWITCH].val = percent;
     event_vars->Message_Display(OSD_Miscellaneous, 0, MSGCOLOR_GREEN,
-                                "Knocks down at %d%%", percent);
+                                "%s knocks down at %d%%",
+                                LabValues_KnockdownMove[slot], percent);
 }
 
 // Frames after a roll during which slideoff still counts as following it. By
@@ -2355,19 +2447,6 @@ void CPUOnHit(void) {
     // percent may have crossed the switch point since the last hit
     Lab_ComboProfileOnHit(cpu_data);
 
-    // remember the move, so its knockdown percent can be worked out on demand
-    for (int i = 0; i < (int)countof(hmn_data->hitbox); ++i)
-    {
-        ftHit *h = &hmn_data->hitbox[i];
-        if (!h->active)
-            continue;
-
-        last_hit_dmg = h->dmg;
-        last_hit_kbg = h->kb_growth;
-        last_hit_bkb = h->kb;
-        last_hit_set_kb = h->wdsk;
-        break;
-    }
     
     // if set during TDI calc, SDI and ASDI will override and follow suit
     CustomTDI *custom_di = NULL;
@@ -7525,6 +7604,8 @@ void Event_Think(GOBJ *event)
     // when the tech windows is the 1f between hitlag and knockdown.
     if (cpu_data->flags.hitlag == 0 || eventData->cpu_tech_lockout > 2)
         eventData->cpu_tech_lockout--;
+
+    Lab_RecordKnockdownMoves(hmn_data);
 
     // remember a recent roll, for slideoff DI
     if (Lab_IsRollState(cpu_data->state_id))

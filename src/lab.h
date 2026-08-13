@@ -2735,6 +2735,7 @@ enum lab_combo_option
     OPTCOMBO_DELAY,
     OPTCOMBO_ESCAPE,
     OPTCOMBO_PCNTSWITCH,
+    OPTCOMBO_KNOCKDOWNMOVE,
     OPTCOMBO_KNOCKDOWNPCNT,
     OPTCOMBO_SAVELOW,
     OPTCOMBO_SAVEHIGH,
@@ -2775,6 +2776,25 @@ enum lab_combo_dk_option
     OPTDK_OSD,
 
     OPTDK_COUNT
+};
+
+enum lab_knockdown_move
+{
+    KDMOVE_JAB, KDMOVE_DASH,
+    KDMOVE_FTILT, KDMOVE_UTILT, KDMOVE_DTILT,
+    KDMOVE_FSMASH, KDMOVE_USMASH, KDMOVE_DSMASH,
+    KDMOVE_NAIR, KDMOVE_FAIR, KDMOVE_BAIR, KDMOVE_UAIR, KDMOVE_DAIR,
+    KDMOVE_NEUTRALB, KDMOVE_SIDEB, KDMOVE_UPB, KDMOVE_DOWNB,
+
+    KDMOVE_COUNT
+};
+
+static const char *LabValues_KnockdownMove[] = {
+    "Jab", "Dash Attack",
+    "Forward Tilt", "Up Tilt", "Down Tilt",
+    "Forward Smash", "Up Smash", "Down Smash",
+    "Neutral Air", "Forward Air", "Back Air", "Up Air", "Down Air",
+    "Neutral B", "Side B", "Up B", "Down B",
 };
 
 static const char *LabValues_ComboDKMode[] = {"Range", "None or Full"};
@@ -2886,11 +2906,18 @@ static EventOption LabOptions_Combo[OPTCOMBO_COUNT] = {
         .format = "%d%%",
     },
     {
+        .kind = OPTKIND_STRING,
+        .value_num = countof(LabValues_KnockdownMove),
+        .name = "Knockdown Move",
+        .desc = {"Which of your moves to read the knockdown",
+                 "percent from."},
+        .values = LabValues_KnockdownMove,
+    },
+    {
         .kind = OPTKIND_FUNC,
         .name = "Set Switch to Knockdown %",
         .desc = {"Set Percent Switch to the percent at which the",
-                 "last move to hit the CPU starts knocking it",
-                 "down. Hit the CPU with the move first."},
+                 "move above starts knocking the CPU down."},
         .OnSelect = Lab_ComboSetKnockdownPercent,
     },
     {
