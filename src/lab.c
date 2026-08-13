@@ -1052,6 +1052,19 @@ static void Lab_ComboResetThink(GOBJ *hmn, FighterData *hmn_data, GOBJ *cpu,
     if (eventData->cpu_hitnum > 0)
         combo_was_hit = 1;
 
+    // Handoff: the CPU sits idle until the combo starts, then control passes to
+    // whichever port is named so something else can play the defence. Uses the
+    // existing Controlled By plumbing, which flips the slot to human and
+    // repoints pad_index, and which already skips the CPU logic entirely.
+    {
+        int handoff = LabOptions_Combo[OPTCOMBO_HANDOFF].val;
+        if (handoff != 0)
+        {
+            LabOptions_CPU[OPTCPU_CTRL_BY].val =
+                combo_was_hit ? (CTRLBY_PORT_1 + handoff - 1) : CTRLBY_NONE;
+        }
+    }
+
     // track the best the attempt managed, since cpu_hitnum is cleared when the
     // CPU's state machine resets
     if (eventData->cpu_hitnum > combo_attempt_hits)
@@ -1126,6 +1139,10 @@ static void Lab_ComboResetThink(GOBJ *hmn, FighterData *hmn_data, GOBJ *cpu,
     combo_attempt_killed = 0;
     combo_was_hit = 0;
     combo_idle_frames = 0;
+
+    // back to idle for the next rep
+    if (LabOptions_Combo[OPTCOMBO_HANDOFF].val != 0)
+        LabOptions_CPU[OPTCPU_CTRL_BY].val = CTRLBY_NONE;
 }
 
 void Lab_ChangeInfoPresetHMN(GOBJ *menu_gobj, int preset_id)

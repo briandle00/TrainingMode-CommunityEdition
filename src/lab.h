@@ -2748,6 +2748,7 @@ enum lab_combo_option
     OPTCOMBO_GOAL,
     OPTCOMBO_GOALHITS,
     OPTCOMBO_GOALSTREAK,
+    OPTCOMBO_HANDOFF,
     OPTCOMBO_DKMENU,
 
     OPTCOMBO_COUNT
@@ -2800,6 +2801,7 @@ static const char *LabValues_KnockdownMove[] = {
 
 static const char *LabValues_ComboDKMode[] = {"Range", "None or Full"};
 static const char *LabValues_ComboRndPos[] = {"Off", "On Stage", "On Platform", "Anywhere"};
+static const char *LabValues_ComboHandoff[] = {"Off", "Port 1", "Port 2", "Port 3", "Port 4"};
 static const char *LabValues_ComboGoal[] = {"Off", "Hit Count", "Kill"};
 
 static EventOption LabOptions_ComboDK[OPTDK_COUNT] = {
@@ -3015,6 +3017,15 @@ static EventOption LabOptions_Combo[OPTCOMBO_COUNT] = {
         .desc = {"Times in a row a setup must be cleared before a",
                  "new one is randomized."},
         .format = "%d",
+    },
+    {
+        .kind = OPTKIND_STRING,
+        .value_num = countof(LabValues_ComboHandoff),
+        .name = "Handoff On Combo",
+        .desc = {"Leave the CPU idle until you start a combo,",
+                 "then hand it to this port. For playing the",
+                 "punish against an external bot."},
+        .values = LabValues_ComboHandoff,
     },
     {
         .kind = OPTKIND_MENU,
