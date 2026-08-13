@@ -601,6 +601,228 @@ static void Lab_ChangeInfoPreset(EventOption options[], int preset_id)
         options[OPTINF_ROW1 + i].val = preset[i];
 }
 
+// Frames left before the combo trainer returns to the saved position.
+// 0 means nothing is pending.
+static int combo_reset_timer = 0;
+// Set once the CPU has taken a hit, so an untouched CPU never triggers a reset.
+static int combo_was_hit = 0;
+// Frames the CPU has been free of hitstun and hitlag. Backstop so a CPU that
+// never settles - drifting offstage, stuck in a recovery - still resets.
+static int combo_idle_frames = 0;
+
+// Longest we will wait for the CPU to look "done" before resetting anyway.
+#define COMBO_SETTLE_LIMIT 120
+
+void Lab_ChangeComboReset(GOBJ *menu_gobj, int value)
+{
+    combo_reset_timer = 0;
+    combo_was_hit = 0;
+    combo_idle_frames = 0;
+}
+
+int CPUAction_CheckASID(GOBJ *cpu, int asid_kind);
+
+// What the CPU should do out of hitstun, per fighter kind. High nibble is the
+// grounded move, low nibble the aerial one. Lifted from the Combo Training asm
+// event, which chose a move that actually suits each character rather than
+// applying one global action to everyone.
+static const u8 Lab_ComboAttackList[] = {
+    0x00, 0x70, 0x04, 0x66, // mario, fox, falcon, dk
+    0x02, 0x66, 0x00, 0x00, // kirby, bowser, link, sheik
+    0x30, 0x00, 0x03, 0x03, // ness, peach, popo, nana
+    0x04, 0x66, 0x00, 0x73, // pikachu, samus, yoshi, jigglypuff
+    0x30, 0x00, 0x01, 0x52, // mewtwo, luigi, marth, zelda
+    0x00, 0x00, 0x70, 0x00, // young link, dr mario, falco, pichu
+    0x66, 0x04, 0x00, 0x00, // game and watch, ganondorf, roy, -
+};
+
+// Indices into LabValues_CounterGround / LabValues_CounterAir, keyed by the
+// move ids used in the table above:
+// 0 jab/nair, 1 forward, 2 back, 3 down, 4 up, 5 down smash, 6 up B, 7 down B
+static const u8 Lab_ComboAttackGround[8] = {20, 21, 21, 23, 22, 10, 4, 7};
+static const u8 Lab_ComboAttackAir[8] = {10, 11, 13, 12, 14, 12, 5, 8};
+
+#define COUNTER_GROUND_SPOTDODGE 1
+#define COUNTER_AIR_AIRDODGE 1
+#define COUNTER_AIR_JUMPNEUTRAL 4
+
+// Writes the chosen escape into the real CPU counter options. Everything stays
+// editable in CPU Options afterwards - this is a starting point, not a mode.
+void Lab_ChangeComboEscape(GOBJ *menu_gobj, int value)
+{
+    if (value == COMBOESC_CUSTOM)
+        return;
+
+    if (value == COMBOESC_AIRDODGE)
+    {
+        LabOptions_CPU[OPTCPU_CTRAIR].val = COUNTER_AIR_AIRDODGE;
+        LabOptions_CPU[OPTCPU_CTRGRND].val = COUNTER_GROUND_SPOTDODGE;
+        return;
+    }
+
+    if (value == COMBOESC_DOUBLEJUMP)
+    {
+        LabOptions_CPU[OPTCPU_CTRAIR].val = COUNTER_AIR_JUMPNEUTRAL;
+        LabOptions_CPU[OPTCPU_CTRGRND].val = COUNTER_GROUND_SPOTDODGE;
+        return;
+    }
+
+    // Attack - pick something that suits the CPU's character
+    GOBJ *cpu = Fighter_GetGObj(1);
+    if (cpu == 0)
+        return;
+
+    FighterData *cpu_data = cpu->userdata;
+    int kind = cpu_data->kind;
+    if (kind < 0 || kind >= (int)countof(Lab_ComboAttackList))
+        return;
+
+    u8 packed = Lab_ComboAttackList[kind];
+    LabOptions_CPU[OPTCPU_CTRGRND].val = Lab_ComboAttackGround[packed >> 4];
+    LabOptions_CPU[OPTCPU_CTRAIR].val = Lab_ComboAttackAir[packed & 0xF];
+}
+
+// Two complete snapshots of the CPU and tech option values, swapped by the
+// CPU's percent. This lets a low-percent setup (say combo DI, no SDI) hand off
+// to a kill-percent one (survival DI, SDI out) without touching the menu.
+#define COMBO_PROFILE_LOW 0
+#define COMBO_PROFILE_HIGH 1
+
+static s16 combo_profile_cpu[2][OPTCPU_COUNT];
+static s16 combo_profile_tech[2][OPTTECH_COUNT];
+static u8 combo_profile_saved[2] = {0, 0};
+
+static void Lab_ComboSaveProfile(int idx)
+{
+    for (int i = 0; i < OPTCPU_COUNT; ++i)
+        combo_profile_cpu[idx][i] = LabOptions_CPU[i].val;
+    for (int i = 0; i < OPTTECH_COUNT; ++i)
+        combo_profile_tech[idx][i] = LabOptions_Tech[i].val;
+
+    combo_profile_saved[idx] = 1;
+}
+
+static void Lab_ComboApplyProfile(int idx)
+{
+    if (!combo_profile_saved[idx])
+        return;
+
+    for (int i = 0; i < OPTCPU_COUNT; ++i)
+        LabOptions_CPU[i].val = combo_profile_cpu[idx][i];
+    for (int i = 0; i < OPTTECH_COUNT; ++i)
+        LabOptions_Tech[i].val = combo_profile_tech[idx][i];
+}
+
+void Lab_ComboSaveLow(GOBJ *menu_gobj)
+{
+    Lab_ComboSaveProfile(COMBO_PROFILE_LOW);
+}
+
+void Lab_ComboSaveHigh(GOBJ *menu_gobj)
+{
+    Lab_ComboSaveProfile(COMBO_PROFILE_HIGH);
+}
+
+// Picks the profile for the CPU's current percent. Applied when the CPU is hit
+// rather than every frame, so menu edits aren't fought over.
+static void Lab_ComboProfileOnHit(FighterData *cpu_data)
+{
+    int threshold = LabOptions_Combo[OPTCOMBO_PCNTSWITCH].val;
+    if (threshold <= 0)
+        return;
+    if (!combo_profile_saved[COMBO_PROFILE_LOW] || !combo_profile_saved[COMBO_PROFILE_HIGH])
+        return;
+
+    int high = cpu_data->dmg.percent >= (float)threshold;
+    Lab_ComboApplyProfile(high ? COMBO_PROFILE_HIGH : COMBO_PROFILE_LOW);
+}
+
+
+
+
+
+
+
+// Returns true once the CPU has settled out of a combo and is free to act.
+static int Lab_ComboHasEnded(GOBJ *cpu, FighterData *cpu_data, LabData *eventData)
+{
+    if (cpu_data->flags.hitstun || cpu_data->flags.hitlag)
+        return 0;
+
+    // Being actionable is not the same as being done. The CPU is actionable the
+    // instant hitstun ends, which is before it has airdodged, jumped out or
+    // counter attacked - starting the countdown there resets out from under its
+    // own escape. Wait until the counter action is finished.
+    if (eventData->cpu_countering)
+        return 0;
+
+    if (eventData->cpu_state != CPUSTATE_START &&
+        eventData->cpu_state != CPUSTATE_NONE)
+        return 0;
+
+    return CPUAction_CheckASID(cpu, ASID_ACTIONABLE);
+}
+
+// Counts down once the combo is over and restores the saved position.
+static void Lab_ComboResetThink(GOBJ *cpu, FighterData *cpu_data, LabData *eventData)
+{
+    if (LabOptions_Combo[OPTCOMBO_RESET].val == 0)
+    {
+        combo_reset_timer = 0;
+        combo_was_hit = 0;
+        return;
+    }
+
+    if (eventData->cpu_hitnum > 0)
+        combo_was_hit = 1;
+
+    if (!combo_was_hit)
+    {
+        combo_idle_frames = 0;
+        return;
+    }
+
+    // being hit restarts everything
+    if (cpu_data->flags.hitstun || cpu_data->flags.hitlag)
+    {
+        combo_idle_frames = 0;
+        combo_reset_timer = 0;
+        return;
+    }
+
+    combo_idle_frames++;
+
+    // Once the CPU is knocked offstage it is not going to come back and look
+    // tidy, and waiting for it to finish recovering is the long stall. Treat
+    // going offstage, or simply taking too long to settle, as combo over.
+    int offstage = eventData->cpu_state == CPUSTATE_RECOVER;
+    int stalled = combo_idle_frames > COMBO_SETTLE_LIMIT;
+
+    if (!offstage && !stalled && !Lab_ComboHasEnded(cpu, cpu_data, eventData))
+    {
+        // still mid escape - hold off
+        combo_reset_timer = 0;
+        return;
+    }
+
+    if (combo_reset_timer == 0)
+    {
+        combo_reset_timer = LabOptions_Combo[OPTCOMBO_DELAY].val;
+
+        // a delay of zero means reset immediately
+        if (combo_reset_timer == 0)
+            combo_reset_timer = 1;
+    }
+
+    combo_reset_timer--;
+    if (combo_reset_timer > 0)
+        return;
+
+    event_vars->Savestate_Load_v1(event_vars->savestate, 0);
+    combo_was_hit = 0;
+    combo_idle_frames = 0;
+}
+
 void Lab_ChangeInfoPresetHMN(GOBJ *menu_gobj, int preset_id)
 {
     Lab_ChangeInfoPreset(LabOptions_InfoDisplayHMN, preset_id);
@@ -1575,6 +1797,77 @@ void CPUResetVars(void) {
     stc_powershield_timer = -1;
 }
 
+// Each SDI input shifts the victim roughly 6 units, so how far the CPU can
+// actually reach scales with how many inputs it is set to make.
+#define SDI_UNITS_PER_INPUT 6.0f
+
+// Is there ground within `reach` below (x, y)? Optionally reports the drop
+// distance so two candidates can be compared.
+static int Lab_GroundBelow(float x, float y, float reach, float *out_drop)
+{
+    Vec3 coll_pos;
+    int line_index;
+    int line_kind;
+    Vec3 line_unk;
+
+    int hit = GrColl_RaycastGround(&coll_pos, &line_index, &line_kind, &line_unk,
+                                   -1, -1, -1, 0, x, y + 2.0f, x, y - reach, 0);
+    if (hit != 1)
+        return 0;
+
+    if (out_drop != 0)
+        *out_drop = y - coll_pos.Y;
+
+    return 1;
+}
+
+// Aim the CPU at ground it could actually drop onto: straight down if there is
+// something directly below, otherwise diagonally toward whichever side has the
+// shorter drop. With nothing in range it returns 0 and the caller falls back to
+// following the TDI direction, same as Auto.
+//
+// Range is 6 units per SDI input, which is roughly what one SDI shifts the
+// victim, so it only fires when landing is genuinely reachable.
+static int Lab_SDITowardGround(LabData *eventData, FighterData *cpu_data)
+{
+    if (cpu_data->phys.air_state == 0)
+        return 0;
+
+    int sdi_num = LabOptions_CPU[OPTCPU_SDINUM].val;
+    if (sdi_num < 1)
+        sdi_num = 1;
+    float reach = SDI_UNITS_PER_INPUT * (float)sdi_num;
+
+    float x = cpu_data->phys.pos.X;
+    float y = cpu_data->phys.pos.Y;
+
+    // straight down
+    if (Lab_GroundBelow(x, y, reach, 0))
+    {
+        eventData->cpu_sdi_lstick_x = 0;
+        eventData->cpu_sdi_lstick_y = -127;
+        return 1;
+    }
+
+    // off to one side - a platform edge or the lip of the stage
+    float drop_left = 0.f;
+    float drop_right = 0.f;
+    int has_left = Lab_GroundBelow(x - reach, y, reach, &drop_left);
+    int has_right = Lab_GroundBelow(x + reach, y, reach, &drop_right);
+
+    if (has_left || has_right)
+    {
+        int go_right = has_right && (!has_left || drop_right < drop_left);
+        eventData->cpu_sdi_lstick_x = go_right ? 90 : -90;
+        eventData->cpu_sdi_lstick_y = -90;
+        return 1;
+    }
+
+    return 0;
+}
+
+static void Lab_ComboProfileOnHit(FighterData *cpu_data);
+
 void CPUOnHit(void) {
     LabData *eventData = event_vars->event_gobj->userdata;
     GOBJ *hmn = Fighter_GetGObj(0);
@@ -1587,6 +1880,9 @@ void CPUOnHit(void) {
     eventData->cpu_isactionable = 0;
     eventData->cpu_countertimer = 0;
     eventData->cpu_hitnum++;
+
+    // percent may have crossed the switch point since the last hit
+    Lab_ComboProfileOnHit(cpu_data);
     
     // if set during TDI calc, SDI and ASDI will override and follow suit
     CustomTDI *custom_di = NULL;
@@ -1731,6 +2027,31 @@ void CPUOnHit(void) {
             eventData->cpu_tdi_lstick_y = (int)(custom_di->lstickY * 127.f);
             break;
         }
+        case (CPUTDI_SLIGHTRANDOM):
+        {
+            // a small nudge up or down, without committing to a side
+            int mag = 36 + HSD_Randi(31);
+            eventData->cpu_tdi_lstick_x = 0;
+            eventData->cpu_tdi_lstick_y = HSD_Randi(2) ? mag : -mag;
+            break;
+        }
+
+        case (CPUTDI_SLIGHTTOWARD):
+        {
+            // drifts in towards the opponent, landing in front of or behind them
+            int mag = 86 + HSD_Randi(20);
+            eventData->cpu_tdi_lstick_x = mag * Fighter_GetOpponentDir(cpu_data, hmn_data);
+            eventData->cpu_tdi_lstick_y = 0;
+            break;
+        }
+
+        case (CPUTDI_DOWNAWAY):
+        {
+            eventData->cpu_tdi_lstick_x = -89 * Fighter_GetOpponentDir(cpu_data, hmn_data);
+            eventData->cpu_tdi_lstick_y = -89;
+            break;
+        }
+
         case (CPUTDI_NONE):
         TDI_NONE:
         {
@@ -1799,6 +2120,18 @@ void CPUOnHit(void) {
     if (custom_di) goto SDI_AUTO;
 
     int sdi_kind = LabOptions_CPU[OPTCPU_SDIDIR].val;
+
+    // Toward Ground resolves before the switch. If it found somewhere to drop
+    // onto it has already set the inputs, otherwise it hands over to whichever
+    // direction the else option names.
+    if (sdi_kind == SDIDIR_TOWARDGROUND)
+    {
+        if (Lab_SDITowardGround(eventData, cpu_data))
+            sdi_kind = -1; // handled, fall through the switch
+        else
+            sdi_kind = LabOptions_CPU[OPTCPU_SDIGROUNDELSE].val;
+    }
+
     switch (sdi_kind) {
         case (SDIDIR_AUTO):
         SDI_AUTO:
@@ -1860,6 +2193,7 @@ void CPUOnHit(void) {
             eventData->cpu_sdi_lstick_y = -127;
             break;
         }
+
     }
 }
 
@@ -6639,6 +6973,8 @@ void Event_Think(GOBJ *event)
     // update menu's percent
     LabOptions_General[OPTGEN_HMNPCNT].val = hmn_data->dmg.percent;
     LabOptions_CPU[OPTCPU_PCNT].val = cpu_data->dmg.percent;
+
+    Lab_ComboResetThink(cpu, cpu_data, eventData);
     
     // reset stale moves
     if (LabOptions_General[OPTGEN_STALE].val == 0)

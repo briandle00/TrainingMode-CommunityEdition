@@ -17,6 +17,7 @@ static EventMenu LabMenu_CPU;
 static EventMenu LabMenu_AdvCounter;
 static EventMenu LabMenu_Record;
 static EventMenu LabMenu_Tech;
+static EventMenu LabMenu_Combo;
 static EventMenu LabMenu_Stage_FOD;
 static EventMenu LabMenu_CustomOSDs;
 static EventMenu LabMenu_SlotManagement;
@@ -877,6 +878,7 @@ enum lab_option
 {
     OPTLAB_GENERAL_OPTIONS,
     OPTLAB_CPU_OPTIONS,
+    OPTLAB_COMBO_OPTIONS,
     OPTLAB_RECORD_OPTIONS,
     OPTLAB_INFODISP_HMN,
     OPTLAB_INFODISP_CPU,
@@ -903,6 +905,13 @@ static EventOption LabOptions_Main[OPTLAB_COUNT] = {
         .menu = &LabMenu_CPU,
         .name = "CPU Options",
         .desc = {"Configure CPU behavior."},
+    },
+    {
+        .kind = OPTKIND_MENU,
+        .menu = &LabMenu_Combo,
+        .name = "Combo Training",
+        .desc = {"Auto reset after a combo, plus presets for",
+                 "practicing combos on the CPU."},
     },
     {
         .kind = OPTKIND_MENU,
@@ -1994,6 +2003,9 @@ enum cpu_tdi
     CPUTDI_CUSTOM,
     CPUTDI_RANDOM_CUSTOM,
     CPUTDI_NONE,
+    CPUTDI_SLIGHTRANDOM,
+    CPUTDI_SLIGHTTOWARD,
+    CPUTDI_DOWNAWAY,
     CPUTDI_NUM,
 
     CPUTDI_COUNT
@@ -2095,6 +2107,7 @@ enum sdi_dir
     SDIDIR_RIGHT,
     SDIDIR_UP,
     SDIDIR_DOWN,
+    SDIDIR_TOWARDGROUND,
 
     SDIDIR_COUNT
 };
@@ -2119,6 +2132,7 @@ enum cpu_option
     OPTCPU_CUSTOMTDI,
     OPTCPU_SDINUM,
     OPTCPU_SDIDIR,
+    OPTCPU_SDIGROUNDELSE,
     OPTCPU_ASDI,
     OPTCPU_BEHAVE,
     OPTCPU_CTRGRND,
@@ -2143,9 +2157,9 @@ enum cpu_option
 static const char *LabValues_Shield[] = {"Off", "On Until Hit", "On"};
 static const char *LabValues_ShieldDir[] = {"Neutral", "Up", "Towards", "Down", "Away"};
 static const char *LabValues_CPUBehave[] = {"Stand", "Shield", "Crouch", "Jump", "Powershield"};
-static const char *LabValues_TDI[] = {"Random", "Inwards", "Outwards", "Natural", "Custom", "Random Custom", "None"};
+static const char *LabValues_TDI[] = {"Random", "Inwards", "Outwards", "Natural", "Custom", "Random Custom", "None", "Slight Random", "Slight Towards", "Down and Away"};
 static const char *LabValues_ASDI[] = {"Auto", "Away", "Towards", "Left", "Right", "Up", "Down"};
-static const char *LabValues_SDIDir[] = {"Auto", "Random", "Away", "Towards", "Left", "Right", "Up", "Down"};
+static const char *LabValues_SDIDir[] = {"Auto", "Random", "Away", "Towards", "Left", "Right", "Up", "Down", "Toward Ground"};
 static const char *LabValues_Tech[] = {"Random", "In Place", "Away", "Towards", "None"};
 static const char *LabValues_Getup[] = {"Random", "Stand", "Away", "Towards", "Attack"};
 static const char *LabValues_GrabEscape[] = {"None", "Medium", "High", "Perfect"};
@@ -2216,6 +2230,15 @@ static EventOption LabOptions_CPU[OPTCPU_COUNT] = {
         .name = "Smash DI Direction",
         .desc = {"Adjust the direction in which the CPU will alter ",
                  "their position during hitstop."},
+        .values = LabValues_SDIDir,
+    },
+    {
+        .kind = OPTKIND_STRING,
+        // every direction except Toward Ground itself, which is last
+        .value_num = (sizeof(LabValues_SDIDir) / 4) - 1,
+        .name = "Toward Ground Else",
+        .desc = {"Direction to use when Toward Ground has no",
+                 "ground in range to drop onto."},
         .values = LabValues_SDIDir,
     },
     {
@@ -2688,6 +2711,93 @@ static EventMenu LabMenu_Tech = {
     .name = "Tech Options",
     .option_num = sizeof(LabOptions_Tech) / sizeof(EventOption),
     .options = LabOptions_Tech,
+};
+
+// COMBO TRAINING MENU --------------------------------------------------------
+
+enum lab_combo_option
+{
+    OPTCOMBO_RESET,
+    OPTCOMBO_DELAY,
+    OPTCOMBO_ESCAPE,
+    OPTCOMBO_PCNTSWITCH,
+    OPTCOMBO_SAVELOW,
+    OPTCOMBO_SAVEHIGH,
+
+    OPTCOMBO_COUNT
+};
+
+enum lab_combo_escape
+{
+    COMBOESC_CUSTOM,
+    COMBOESC_AIRDODGE,
+    COMBOESC_DOUBLEJUMP,
+    COMBOESC_ATTACK,
+
+    COMBOESC_COUNT
+};
+
+static const char *LabValues_ComboEscape[] = {"Custom", "Airdodge", "Double Jump", "Attack"};
+
+static EventOption LabOptions_Combo[OPTCOMBO_COUNT] = {
+    {
+        .kind = OPTKIND_TOGGLE,
+        .name = "Auto Reset",
+        .desc = {"Return to the saved position once the CPU",
+                 "recovers from a combo."},
+        .val = 0,
+        .OnChange = Lab_ChangeComboReset,
+    },
+    {
+        .kind = OPTKIND_INT,
+        .value_num = 121,
+        .val = 30,
+        .value_min = 0,
+        .name = "Reset Delay",
+        .desc = {"Frames to wait after the CPU is actionable",
+                 "before resetting."},
+        .format = "%d",
+    },
+    {
+        .kind = OPTKIND_STRING,
+        .value_num = countof(LabValues_ComboEscape),
+        .name = "Escape Option",
+        .desc = {"Set what the CPU does out of hitstun. Attack",
+                 "picks a move that suits its character.",
+                 "Writes into CPU Options, edit there to refine."},
+        .values = LabValues_ComboEscape,
+        .OnChange = Lab_ChangeComboEscape,
+    },
+    {
+        .kind = OPTKIND_INT,
+        .value_num = 1000,
+        .val = 0,
+        .value_min = 0,
+        .name = "Percent Switch",
+        .desc = {"Swap the whole CPU and tech setup at this percent.",
+                 "0 disables it. Save both sets below first."},
+        .format = "%d%%",
+    },
+    {
+        .kind = OPTKIND_FUNC,
+        .name = "Save as Low Percent",
+        .desc = {"Store every CPU and tech option as the set to",
+                 "use below the switch percent."},
+        .OnSelect = Lab_ComboSaveLow,
+    },
+    {
+        .kind = OPTKIND_FUNC,
+        .name = "Save as High Percent",
+        .desc = {"Store every CPU and tech option as the set to",
+                 "use at or above the switch percent."},
+        .OnSelect = Lab_ComboSaveHigh,
+    },
+};
+
+static EventMenu LabMenu_Combo = {
+    .name = "Combo Training",
+    .option_num = countof(LabOptions_Combo),
+    .options = LabOptions_Combo,
 };
 
 // PLAYBACK CHANCES MENU -----------------------------------------------------
