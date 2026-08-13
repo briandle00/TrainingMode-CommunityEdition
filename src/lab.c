@@ -858,7 +858,11 @@ static void Lab_ComboRandomizeDKPunch(FighterData *hmn_data)
         high = swap;
     }
 
-    int charge = low + HSD_Randi((high - low) + 1);
+    int charge;
+    if (LabOptions_ComboDK[OPTDK_MODE].val == 1)
+        charge = HSD_Randi(2) ? DK_PUNCH_CHARGE_MAX : 0; // none or full only
+    else
+        charge = low + HSD_Randi((high - low) + 1);
     hmn_data->fighter_var.DK_PUNCH_CHARGE_VAR = charge;
 
     if (LabOptions_ComboDK[OPTDK_OSD].val)
@@ -916,8 +920,30 @@ static void Lab_ComboRandomizeSetup(GOBJ *hmn, FighterData *hmn_data,
     }
     else if (LabOptions_Combo[OPTCOMBO_RNDFACING].val)
     {
+        // Turning around has to bring the CPU round with it, otherwise a flipped
+        // facing just leaves it standing behind you.
+        float gap = cpu_data->phys.pos.X - hmn_data->phys.pos.X;
+        if (gap < 0.f)
+            gap = -gap;
+        if (gap < 1.f)
+            gap = 10.f;
+
         hmn_data->facing_direction = facing;
-        cpu_data->facing_direction = -facing;
+
+        Vec3 spot = cpu_data->phys.pos;
+        spot.X = hmn_data->phys.pos.X + facing * gap;
+
+        Vec3 ground;
+        int line_index;
+        int line_kind;
+        Vec3 line_unk;
+
+        if (GrColl_RaycastGround(&ground, &line_index, &line_kind, &line_unk,
+                                 -1, -1, -1, 0, spot.X, spot.Y + 5.f,
+                                 spot.X, spot.Y - 20.f, 0) == 1)
+            Lab_ComboPlaceFighter(cpu, &ground, line_index, -facing);
+        else
+            cpu_data->facing_direction = -facing;
     }
 
     if (LabOptions_Combo[OPTCOMBO_RNDPCNT].val)
@@ -2069,9 +2095,15 @@ static int Lab_GroundBelow(float x, float y, float reach, float *out_drop)
 // SDI toward the near edge of the platform the CPU is standing on, so it slides
 // off. Returns 0 when not on a platform, since sliding off the main stage floor
 // is not a thing.
-static int Lab_SDISlideOff(LabData *eventData, FighterData *cpu_data)
+// Is the fighter stood on a platform? Reports which way the nearer edge is, how
+// far off it is, and how wide the platform is. Returns 0 on the stage floor,
+// which is not something you slide off usefully.
+static int Lab_PlatformEdge(FighterData *data, int *out_dir, float *out_dist, float *out_width)
 {
-    int line = cpu_data->coll_data.ground_index;
+    if (data->phys.air_state != 0)
+        return 0;
+
+    int line = data->coll_data.ground_index;
     if (line < 0)
         return 0;
 
@@ -2080,16 +2112,62 @@ static int Lab_SDISlideOff(LabData *eventData, FighterData *cpu_data)
     GrColl_GetGroundLineEndLeft(line, &left);
     GrColl_GetGroundLineEndRight(line, &right);
 
-    // the main stage floor is not something you slide off usefully
-    if ((right.X - left.X) > COMBO_MAX_PLATFORM_WIDTH)
+    float width = right.X - left.X;
+    if (width > COMBO_MAX_PLATFORM_WIDTH)
         return 0;
 
-    float x = cpu_data->phys.pos.X;
+    float x = data->phys.pos.X;
     float to_left = x - left.X;
     float to_right = right.X - x;
 
-    eventData->cpu_sdi_lstick_x = (to_right < to_left) ? 127 : -127;
+    if (to_right < to_left)
+    {
+        *out_dir = 1;
+        *out_dist = to_right;
+    }
+    else
+    {
+        *out_dir = -1;
+        *out_dist = to_left;
+    }
+
+    *out_width = width;
+    return 1;
+}
+
+static int Lab_SDISlideOff(LabData *eventData, FighterData *cpu_data)
+{
+    int dir;
+    float dist;
+    float width;
+
+    if (!Lab_PlatformEdge(cpu_data, &dir, &dist, &width))
+        return 0;
+
+    eventData->cpu_sdi_lstick_x = 127 * dir;
     eventData->cpu_sdi_lstick_y = 0;
+    return 1;
+}
+
+// DI toward the near platform edge, but only when it is close enough to be
+// worth going for. Slide Off Range is that closeness as a share of the
+// platform's width, so it scales with the platform rather than being a fixed
+// distance that means different things on Battlefield and Yoshi's.
+static int Lab_TDISlideOff(LabData *eventData, FighterData *cpu_data)
+{
+    int dir;
+    float dist;
+    float width;
+
+    if (!Lab_PlatformEdge(cpu_data, &dir, &dist, &width))
+        return 0;
+
+    float share = (float)LabOptions_CPU[OPTCPU_SLIDEOFFRANGE].val * 0.01f;
+    if (dist > width * share)
+        return 0;
+
+    eventData->cpu_tdi_lstick_x = 127 * dir;
+    eventData->cpu_tdi_lstick_y = 0;
     return 1;
 }
 
@@ -2221,6 +2299,17 @@ void CPUOnHit(void) {
 
     // calc TDI vals
     int tdi_kind = LabOptions_CPU[OPTCPU_TDI].val;
+
+    // Slide Off resolves before the switch. With no edge in range it hands over
+    // to whichever DI the else option names.
+    if (tdi_kind == CPUTDI_SLIDEOFF)
+    {
+        if (Lab_TDISlideOff(eventData, cpu_data))
+            tdi_kind = -1; // handled, fall through the switch
+        else
+            tdi_kind = LabOptions_CPU[OPTCPU_SLIDEOFFELSE].val;
+    }
+
     switch (tdi_kind)
     {
         case (CPUTDI_RANDOM):
