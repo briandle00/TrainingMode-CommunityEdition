@@ -58,6 +58,14 @@ Sent upstream as [#351].
 | Percent Switch | swap the whole CPU and tech setup at this percent, 0 disables |
 | Save as Low Percent | snapshot every CPU and tech option as the low set |
 | Save as High Percent | snapshot every CPU and tech option as the high set |
+| Randomize Position | Off / On Stage / On Platform / Anywhere |
+| Randomize Facing | randomize which way you face |
+| Randomize Percent | give the CPU a random percent in the range below |
+| Percent Low / High | bounds of that range |
+| Goal | Off / Hit Count / Kill |
+| Goal Hit Count | hits needed to clear a setup |
+| Goal Streak | times in a row a setup must be cleared |
+| DK Options | submenu, Giant Punch charge randomization |
 
 **Auto Reset** starts counting as soon as the CPU can act again, so Reset Delay
 means frames after the CPU is free to act. Being hit again cancels a pending
@@ -80,6 +88,22 @@ Lab's counter action otherwise applies one global move to everyone:
 | Ness / Mewtwo | Down Tilt | Nair |
 | Kirby | Jab | Bair |
 | Ice Climbers | Jab | Dair |
+
+**Randomized setups.** Every piece is independent, so any combination works.
+Position picks a spot by raycasting for ground, so it works on any stage; the
+zone filter tells platforms from the stage by height above the main floor. The
+CPU is always placed just in front of you, the same as pressing DPad down.
+Facing and percent are separate toggles.
+
+**Goals.** A setup can require a number of hits or a kill, and `Goal Streak` sets
+how many times in a row it must be cleared. Until then the same setup repeats,
+so a missed attempt means another go at it rather than a new one. With no goal
+set every attempt counts as cleared. Once a setup is cleared the new one is saved
+over the reset state, so plain resets return to it.
+
+**DK Options** randomize Giant Punch charge on each new setup, between a lowest
+and highest number of windups so partial charges can be practiced. `Show Charge`
+puts the result on screen — full, none, or `n/10`.
 
 **Percent profiles** snapshot the entire `LabOptions_CPU` and `LabOptions_Tech`
 value sets. Configure a low percent setup, save it, configure a kill percent one,
