@@ -1864,9 +1864,24 @@ static ftHit *Lab_NearestActiveHitbox(FighterData *hmn_data, FighterData *cpu_da
     return nearest;
 }
 
+// Will this hit put the CPU on the floor? The light damage states - DamageHi,
+// DamageN, DamageLw, DamageAir - land normally and the CPU can act straight
+// away. DamageFly and tumble are the ones that end in a knockdown.
+static int Lab_WillBeKnockedDown(FighterData *cpu_data)
+{
+    int state = cpu_data->state_id;
+
+    if (state == ASID_DAMAGEFALL)
+        return 1;
+
+    return (ASID_DAMAGEFLYHI <= state && state <= ASID_DAMAGEFLYROLL);
+}
+
 // Optimal SDI, in priority order:
 //   1. already grounded - nothing vertical to gain, so make distance instead
-//   2. ground straight below and in reach - SDI down to land and reset
+//   2. the hit will not knock the CPU down and there is ground to reach - SDI
+//      down, because landing from a light hit means acting again immediately
+//   3. ground straight below and in reach - SDI down to land and reset
 //   3. ground off to one side in reach - SDI diagonally onto it, which is what
 //      picks up platforms and stage edges
 //   4. an active hitbox on the attacker - escape it, by the shape of the hit:
@@ -1903,6 +1918,20 @@ static void Lab_OptimalSDI(LabData *eventData, FighterData *cpu_data,
 
     float x = cpu_data->phys.pos.X;
     float y = cpu_data->phys.pos.Y;
+
+    // If the hit is light enough not to knock the CPU down, landing means it
+    // simply touches down and is free to act - no tech, no getup, no follow up.
+    // That is the best thing SDI can buy, so it outranks everything below, but
+    // only when there is actually ground to reach. The lookahead is longer than
+    // raw SDI reach because a light hit barely moves the CPU and gravity does
+    // the rest.
+    if (!Lab_WillBeKnockedDown(cpu_data) &&
+        Lab_GroundBelow(x, y, reach + SDI_FALL_LOOKAHEAD, 0))
+    {
+        eventData->cpu_sdi_lstick_x = 0;
+        eventData->cpu_sdi_lstick_y = -127;
+        return;
+    }
 
     // straight down onto something
     if (Lab_GroundBelow(x, y, reach, 0))
