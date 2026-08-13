@@ -420,6 +420,8 @@ void Lab_ChangeInputDisplay(GOBJ *menu_gobj, int value);
 void Lab_ChangeOverlays(GOBJ *menu_gobj, int value);
 void Lab_ChangeComboReset(GOBJ *menu_gobj, int value);
 void Lab_ChangeComboEscape(GOBJ *menu_gobj, int value);
+void Lab_ComboSaveLow(GOBJ *menu_gobj);
+void Lab_ComboSaveHigh(GOBJ *menu_gobj);
 void Lab_StartMoveCPU(GOBJ *menu_gobj);
 void Lab_FinishMoveCPU(GOBJ *menu_gobj);
 void Lab_FreezeCPU(GOBJ *menu_gobj);

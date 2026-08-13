@@ -2003,6 +2003,9 @@ enum cpu_tdi
     CPUTDI_CUSTOM,
     CPUTDI_RANDOM_CUSTOM,
     CPUTDI_NONE,
+    CPUTDI_SLIGHTRANDOM,
+    CPUTDI_SLIGHTTOWARD,
+    CPUTDI_DOWNAWAY,
     CPUTDI_NUM,
 
     CPUTDI_COUNT
@@ -2104,6 +2107,7 @@ enum sdi_dir
     SDIDIR_RIGHT,
     SDIDIR_UP,
     SDIDIR_DOWN,
+    SDIDIR_OPTIMAL,
 
     SDIDIR_COUNT
 };
@@ -2152,9 +2156,9 @@ enum cpu_option
 static const char *LabValues_Shield[] = {"Off", "On Until Hit", "On"};
 static const char *LabValues_ShieldDir[] = {"Neutral", "Up", "Towards", "Down", "Away"};
 static const char *LabValues_CPUBehave[] = {"Stand", "Shield", "Crouch", "Jump", "Powershield"};
-static const char *LabValues_TDI[] = {"Random", "Inwards", "Outwards", "Natural", "Custom", "Random Custom", "None"};
+static const char *LabValues_TDI[] = {"Random", "Inwards", "Outwards", "Natural", "Custom", "Random Custom", "None", "Slight Random", "Slight Towards", "Down and Away"};
 static const char *LabValues_ASDI[] = {"Auto", "Away", "Towards", "Left", "Right", "Up", "Down"};
-static const char *LabValues_SDIDir[] = {"Auto", "Random", "Away", "Towards", "Left", "Right", "Up", "Down"};
+static const char *LabValues_SDIDir[] = {"Auto", "Random", "Away", "Towards", "Left", "Right", "Up", "Down", "Optimal"};
 static const char *LabValues_Tech[] = {"Random", "In Place", "Away", "Towards", "None"};
 static const char *LabValues_Getup[] = {"Random", "Stand", "Away", "Towards", "Attack"};
 static const char *LabValues_GrabEscape[] = {"None", "Medium", "High", "Perfect"};
@@ -2706,6 +2710,9 @@ enum lab_combo_option
     OPTCOMBO_RESET,
     OPTCOMBO_DELAY,
     OPTCOMBO_ESCAPE,
+    OPTCOMBO_PCNTSWITCH,
+    OPTCOMBO_SAVELOW,
+    OPTCOMBO_SAVEHIGH,
 
     OPTCOMBO_COUNT
 };
@@ -2741,7 +2748,6 @@ static EventOption LabOptions_Combo[OPTCOMBO_COUNT] = {
                  "before resetting."},
         .format = "%d",
     },
-
     {
         .kind = OPTKIND_STRING,
         .value_num = countof(LabValues_ComboEscape),
@@ -2751,6 +2757,30 @@ static EventOption LabOptions_Combo[OPTCOMBO_COUNT] = {
                  "Writes into CPU Options, edit there to refine."},
         .values = LabValues_ComboEscape,
         .OnChange = Lab_ChangeComboEscape,
+    },
+    {
+        .kind = OPTKIND_INT,
+        .value_num = 1000,
+        .val = 0,
+        .value_min = 0,
+        .name = "Percent Switch",
+        .desc = {"Swap the whole CPU and tech setup at this percent.",
+                 "0 disables it. Save both sets below first."},
+        .format = "%d%%",
+    },
+    {
+        .kind = OPTKIND_FUNC,
+        .name = "Save as Low Percent",
+        .desc = {"Store every CPU and tech option as the set to",
+                 "use below the switch percent."},
+        .OnSelect = Lab_ComboSaveLow,
+    },
+    {
+        .kind = OPTKIND_FUNC,
+        .name = "Save as High Percent",
+        .desc = {"Store every CPU and tech option as the set to",
+                 "use at or above the switch percent."},
+        .OnSelect = Lab_ComboSaveHigh,
     },
 };
 
