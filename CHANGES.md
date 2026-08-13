@@ -120,20 +120,18 @@ carries the CPU back toward the middle of the stage rather than out toward a
 blast zone. This is the "DI to center stage when you cannot slide off" answer,
 and the same one for surviving a kill move.
 
-### New Smash DI direction: Slide Off
-
-SDI toward the near edge of the platform the CPU is standing on, so it slides off
-and the string ends. It reads the ground line the CPU is actually on and asks
-melee for that line's ends, so it follows real platform geometry rather than
-assuming anything about the stage.
-
-Ground wider than 80 units counts as the stage rather than a platform, and off a
-platform it falls back to Auto — sliding off the stage floor is not a thing.
-
 ### New Smash DI direction: Toward Ground
 
-If there is ground the CPU could drop onto, SDI at it: straight down, or
-diagonally toward the shorter drop if it is off to one side.
+Aims the CPU at ground it could actually reach.
+
+**On a platform** it slides off the near edge, which is how you get to the ground
+from up there and ends the string on the way. It reads the ground line the CPU is
+actually standing on and asks melee for that line's ends, so it follows real
+platform geometry. Ground wider than 80 units counts as the stage rather than a
+platform, so it does not try to slide off the stage floor.
+
+**In the air** it SDIs straight down if there is something directly below, or
+diagonally toward the shorter drop if the ground is off to one side.
 
 Range is `6 units x N`, where `N` is the lower of Smash DI Amount and the move's
 hitlag. SDI only happens during hitlag, so the move caps how many inputs are
