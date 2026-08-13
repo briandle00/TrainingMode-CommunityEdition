@@ -632,30 +632,12 @@ static const u8 Lab_ComboAttackList[] = {
 // Indices into LabValues_CounterGround / LabValues_CounterAir, keyed by the
 // move ids used in the table above:
 // 0 jab/nair, 1 forward, 2 back, 3 down, 4 up, 5 down smash, 6 up B, 7 down B
-static const u8 Lab_ComboAttackGround[8] = {
-    20, // Jab
-    21, // Forward Tilt
-    21, // Forward Tilt (no grounded back attack)
-    23, // Down Tilt
-    22, // Up Tilt
-    10, // Down Smash
-    4,  // Up B
-    7,  // Down B
-};
-static const u8 Lab_ComboAttackAir[8] = {
-    10, // Neutral Air
-    11, // Forward Air
-    13, // Back Air
-    12, // Down Air
-    14, // Up Air
-    12, // Down Air (no aerial down smash)
-    5,  // Up B
-    8,  // Down B
-};
+static const u8 Lab_ComboAttackGround[8] = {20, 21, 21, 23, 22, 10, 4, 7};
+static const u8 Lab_ComboAttackAir[8] = {10, 11, 13, 12, 14, 12, 5, 8};
 
 #define COUNTER_GROUND_SPOTDODGE 1
-#define COUNTER_AIR_AIRDODGE     1
-#define COUNTER_AIR_JUMPNEUTRAL  4
+#define COUNTER_AIR_AIRDODGE 1
+#define COUNTER_AIR_JUMPNEUTRAL 4
 
 // Writes the chosen escape into the real CPU counter options. Everything stays
 // editable in CPU Options afterwards - this is a starting point, not a mode.
@@ -693,44 +675,66 @@ void Lab_ChangeComboEscape(GOBJ *menu_gobj, int value)
     LabOptions_CPU[OPTCPU_CTRAIR].val = Lab_ComboAttackAir[packed & 0xF];
 }
 
-int CPUAction_CheckASID(GOBJ *cpu, int asid_kind);
+// Two complete snapshots of the CPU and tech option values, swapped by the
+// CPU's percent. This lets a low-percent setup (say combo DI, no SDI) hand off
+// to a kill-percent one (survival DI, SDI out) without touching the menu.
+#define COMBO_PROFILE_LOW 0
+#define COMBO_PROFILE_HIGH 1
 
-// The combo menu's shortcut options write straight through to the real CPU
-// options, so there is only ever one source of truth.
-void Lab_ChangeComboDI(GOBJ *menu_gobj, int value)
+static s16 combo_profile_cpu[2][OPTCPU_COUNT];
+static s16 combo_profile_tech[2][OPTTECH_COUNT];
+static u8 combo_profile_saved[2] = {0, 0};
+
+static void Lab_ComboSaveProfile(int idx)
 {
-    LabOptions_CPU[OPTCPU_TDI].val = value;
+    for (int i = 0; i < OPTCPU_COUNT; ++i)
+        combo_profile_cpu[idx][i] = LabOptions_CPU[i].val;
+    for (int i = 0; i < OPTTECH_COUNT; ++i)
+        combo_profile_tech[idx][i] = LabOptions_Tech[i].val;
+
+    combo_profile_saved[idx] = 1;
 }
 
-void Lab_ChangeComboSDINum(GOBJ *menu_gobj, int value)
+static void Lab_ComboApplyProfile(int idx)
 {
-    LabOptions_CPU[OPTCPU_SDINUM].val = value;
+    if (!combo_profile_saved[idx])
+        return;
+
+    for (int i = 0; i < OPTCPU_COUNT; ++i)
+        LabOptions_CPU[i].val = combo_profile_cpu[idx][i];
+    for (int i = 0; i < OPTTECH_COUNT; ++i)
+        LabOptions_Tech[i].val = combo_profile_tech[idx][i];
 }
 
-void Lab_ChangeComboSDIDir(GOBJ *menu_gobj, int value)
+void Lab_ComboSaveLow(GOBJ *menu_gobj)
 {
-    LabOptions_CPU[OPTCPU_SDIDIR].val = value;
+    Lab_ComboSaveProfile(COMBO_PROFILE_LOW);
 }
 
-void Lab_ChangeComboTech(GOBJ *menu_gobj, int value)
+void Lab_ComboSaveHigh(GOBJ *menu_gobj)
 {
-    LabOptions_Tech[OPTTECH_TECH].val = value;
+    Lab_ComboSaveProfile(COMBO_PROFILE_HIGH);
 }
 
-void Lab_ChangeComboCtrAir(GOBJ *menu_gobj, int value)
+// Picks the profile for the CPU's current percent. Applied when the CPU is hit
+// rather than every frame, so menu edits aren't fought over.
+static void Lab_ComboProfileOnHit(FighterData *cpu_data)
 {
-    LabOptions_CPU[OPTCPU_CTRAIR].val = value;
+    int threshold = LabOptions_Combo[OPTCOMBO_PCNTSWITCH].val;
+    if (threshold <= 0)
+        return;
+    if (!combo_profile_saved[COMBO_PROFILE_LOW] || !combo_profile_saved[COMBO_PROFILE_HIGH])
+        return;
+
+    int high = cpu_data->dmg.percent >= (float)threshold;
+    Lab_ComboApplyProfile(high ? COMBO_PROFILE_HIGH : COMBO_PROFILE_LOW);
 }
 
-void Lab_ChangeComboCtrGrnd(GOBJ *menu_gobj, int value)
-{
-    LabOptions_CPU[OPTCPU_CTRGRND].val = value;
-}
 
-void Lab_ChangeComboCtrFrames(GOBJ *menu_gobj, int value)
-{
-    LabOptions_CPU[OPTCPU_CTRFRAMES].val = value;
-}
+
+
+
+
 
 // Returns true once the CPU has settled out of a combo and is free to act.
 static int Lab_ComboHasEnded(GOBJ *cpu, FighterData *cpu_data)
@@ -1755,6 +1759,12 @@ void CPUResetVars(void) {
     stc_powershield_timer = -1;
 }
 
+// How far above the last surface the CPU stood on still counts as "can get
+// grounded" for Optimal SDI.
+#define SDI_GROUNDED_REACH 12.0f
+
+static void Lab_ComboProfileOnHit(FighterData *cpu_data);
+
 void CPUOnHit(void) {
     LabData *eventData = event_vars->event_gobj->userdata;
     GOBJ *hmn = Fighter_GetGObj(0);
@@ -1767,6 +1777,9 @@ void CPUOnHit(void) {
     eventData->cpu_isactionable = 0;
     eventData->cpu_countertimer = 0;
     eventData->cpu_hitnum++;
+
+    // percent may have crossed the switch point since the last hit
+    Lab_ComboProfileOnHit(cpu_data);
     
     // if set during TDI calc, SDI and ASDI will override and follow suit
     CustomTDI *custom_di = NULL;
@@ -1911,6 +1924,31 @@ void CPUOnHit(void) {
             eventData->cpu_tdi_lstick_y = (int)(custom_di->lstickY * 127.f);
             break;
         }
+        case (CPUTDI_SLIGHTRANDOM):
+        {
+            // a small nudge up or down, without committing to a side
+            int mag = 36 + HSD_Randi(31);
+            eventData->cpu_tdi_lstick_x = 0;
+            eventData->cpu_tdi_lstick_y = HSD_Randi(2) ? mag : -mag;
+            break;
+        }
+
+        case (CPUTDI_SLIGHTTOWARD):
+        {
+            // drifts in towards the opponent, landing in front of or behind them
+            int mag = 86 + HSD_Randi(20);
+            eventData->cpu_tdi_lstick_x = mag * Fighter_GetOpponentDir(cpu_data, hmn_data);
+            eventData->cpu_tdi_lstick_y = 0;
+            break;
+        }
+
+        case (CPUTDI_DOWNAWAY):
+        {
+            eventData->cpu_tdi_lstick_x = -89 * Fighter_GetOpponentDir(cpu_data, hmn_data);
+            eventData->cpu_tdi_lstick_y = -89;
+            break;
+        }
+
         case (CPUTDI_NONE):
         TDI_NONE:
         {
@@ -2038,6 +2076,29 @@ void CPUOnHit(void) {
         {
             eventData->cpu_sdi_lstick_x = 0;
             eventData->cpu_sdi_lstick_y = -127;
+            break;
+        }
+        case (SDIDIR_OPTIMAL):
+        {
+            // SDI down when the ground is close enough to reach and reset the
+            // situation, otherwise up and out of the combo.
+            //
+            // This is a heuristic, not a trajectory simulation: it measures
+            // height above the last surface the CPU stood on. It reads well on
+            // flat ground and near platforms, and is only a guess once the CPU
+            // has been carried away from where it was last grounded.
+            if (cpu_data->phys.air_state == 0)
+            {
+                // already grounded - nothing vertical to gain, go away instead
+                eventData->cpu_sdi_lstick_x = -127 * Fighter_GetOpponentDir(cpu_data, hmn_data);
+                eventData->cpu_sdi_lstick_y = 0;
+                break;
+            }
+
+            float height = cpu_data->phys.pos.Y - cpu_data->coll_data.coll_pos.Y;
+
+            eventData->cpu_sdi_lstick_x = 0;
+            eventData->cpu_sdi_lstick_y = (height <= SDI_GROUNDED_REACH) ? -127 : 127;
             break;
         }
     }
