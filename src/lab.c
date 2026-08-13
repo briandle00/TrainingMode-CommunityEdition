@@ -2120,6 +2120,18 @@ void CPUOnHit(void) {
     if (custom_di) goto SDI_AUTO;
 
     int sdi_kind = LabOptions_CPU[OPTCPU_SDIDIR].val;
+
+    // Toward Ground resolves before the switch. If it found somewhere to drop
+    // onto it has already set the inputs, otherwise it hands over to whichever
+    // direction the else option names.
+    if (sdi_kind == SDIDIR_TOWARDGROUND)
+    {
+        if (Lab_SDITowardGround(eventData, cpu_data))
+            sdi_kind = -1; // handled, fall through the switch
+        else
+            sdi_kind = LabOptions_CPU[OPTCPU_SDIGROUNDELSE].val;
+    }
+
     switch (sdi_kind) {
         case (SDIDIR_AUTO):
         SDI_AUTO:
@@ -2181,13 +2193,7 @@ void CPUOnHit(void) {
             eventData->cpu_sdi_lstick_y = -127;
             break;
         }
-        case (SDIDIR_TOWARDGROUND):
-        {
-            // nothing within range to drop onto, so behave like Auto
-            if (!Lab_SDITowardGround(eventData, cpu_data))
-                goto SDI_AUTO;
-            break;
-        }
+
     }
 }
 

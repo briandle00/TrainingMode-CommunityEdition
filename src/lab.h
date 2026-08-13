@@ -2132,6 +2132,7 @@ enum cpu_option
     OPTCPU_CUSTOMTDI,
     OPTCPU_SDINUM,
     OPTCPU_SDIDIR,
+    OPTCPU_SDIGROUNDELSE,
     OPTCPU_ASDI,
     OPTCPU_BEHAVE,
     OPTCPU_CTRGRND,
@@ -2229,6 +2230,15 @@ static EventOption LabOptions_CPU[OPTCPU_COUNT] = {
         .name = "Smash DI Direction",
         .desc = {"Adjust the direction in which the CPU will alter ",
                  "their position during hitstop."},
+        .values = LabValues_SDIDir,
+    },
+    {
+        .kind = OPTKIND_STRING,
+        // every direction except Toward Ground itself, which is last
+        .value_num = (sizeof(LabValues_SDIDir) / 4) - 1,
+        .name = "Toward Ground Else",
+        .desc = {"Direction to use when Toward Ground has no",
+                 "ground in range to drop onto."},
         .values = LabValues_SDIDir,
     },
     {
