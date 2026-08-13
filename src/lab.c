@@ -615,6 +615,86 @@ void Lab_ChangeComboReset(GOBJ *menu_gobj, int value)
 
 int CPUAction_CheckASID(GOBJ *cpu, int asid_kind);
 
+// What the CPU should do out of hitstun, per fighter kind. High nibble is the
+// grounded move, low nibble the aerial one. Lifted from the Combo Training asm
+// event, which chose a move that actually suits each character rather than
+// applying one global action to everyone.
+static const u8 Lab_ComboAttackList[] = {
+    0x00, 0x70, 0x04, 0x66, // mario, fox, falcon, dk
+    0x02, 0x66, 0x00, 0x00, // kirby, bowser, link, sheik
+    0x30, 0x00, 0x03, 0x03, // ness, peach, popo, nana
+    0x04, 0x66, 0x00, 0x73, // pikachu, samus, yoshi, jigglypuff
+    0x30, 0x00, 0x01, 0x52, // mewtwo, luigi, marth, zelda
+    0x00, 0x00, 0x70, 0x00, // young link, dr mario, falco, pichu
+    0x66, 0x04, 0x00, 0x00, // game and watch, ganondorf, roy, -
+};
+
+// Indices into LabValues_CounterGround / LabValues_CounterAir, keyed by the
+// move ids used in the table above:
+// 0 jab/nair, 1 forward, 2 back, 3 down, 4 up, 5 down smash, 6 up B, 7 down B
+static const u8 Lab_ComboAttackGround[8] = {
+    20, // Jab
+    21, // Forward Tilt
+    21, // Forward Tilt (no grounded back attack)
+    23, // Down Tilt
+    22, // Up Tilt
+    10, // Down Smash
+    4,  // Up B
+    7,  // Down B
+};
+static const u8 Lab_ComboAttackAir[8] = {
+    10, // Neutral Air
+    11, // Forward Air
+    13, // Back Air
+    12, // Down Air
+    14, // Up Air
+    12, // Down Air (no aerial down smash)
+    5,  // Up B
+    8,  // Down B
+};
+
+#define COUNTER_GROUND_SPOTDODGE 1
+#define COUNTER_AIR_AIRDODGE     1
+#define COUNTER_AIR_JUMPNEUTRAL  4
+
+// Writes the chosen escape into the real CPU counter options. Everything stays
+// editable in CPU Options afterwards - this is a starting point, not a mode.
+void Lab_ChangeComboEscape(GOBJ *menu_gobj, int value)
+{
+    if (value == COMBOESC_CUSTOM)
+        return;
+
+    if (value == COMBOESC_AIRDODGE)
+    {
+        LabOptions_CPU[OPTCPU_CTRAIR].val = COUNTER_AIR_AIRDODGE;
+        LabOptions_CPU[OPTCPU_CTRGRND].val = COUNTER_GROUND_SPOTDODGE;
+        return;
+    }
+
+    if (value == COMBOESC_DOUBLEJUMP)
+    {
+        LabOptions_CPU[OPTCPU_CTRAIR].val = COUNTER_AIR_JUMPNEUTRAL;
+        LabOptions_CPU[OPTCPU_CTRGRND].val = COUNTER_GROUND_SPOTDODGE;
+        return;
+    }
+
+    // Attack - pick something that suits the CPU's character
+    GOBJ *cpu = Fighter_GetGObj(1);
+    if (cpu == 0)
+        return;
+
+    FighterData *cpu_data = cpu->userdata;
+    int kind = cpu_data->kind;
+    if (kind < 0 || kind >= (int)countof(Lab_ComboAttackList))
+        return;
+
+    u8 packed = Lab_ComboAttackList[kind];
+    LabOptions_CPU[OPTCPU_CTRGRND].val = Lab_ComboAttackGround[packed >> 4];
+    LabOptions_CPU[OPTCPU_CTRAIR].val = Lab_ComboAttackAir[packed & 0xF];
+}
+
+int CPUAction_CheckASID(GOBJ *cpu, int asid_kind);
+
 // The combo menu's shortcut options write straight through to the real CPU
 // options, so there is only ever one source of truth.
 void Lab_ChangeComboDI(GOBJ *menu_gobj, int value)
@@ -650,19 +730,6 @@ void Lab_ChangeComboCtrGrnd(GOBJ *menu_gobj, int value)
 void Lab_ChangeComboCtrFrames(GOBJ *menu_gobj, int value)
 {
     LabOptions_CPU[OPTCPU_CTRFRAMES].val = value;
-}
-
-// Pull the real options back into the shortcuts, so changing something in
-// CPU Options is reflected here too.
-static void Lab_SyncComboShortcuts(void)
-{
-    LabOptions_Combo[OPTCOMBO_DI].val = LabOptions_CPU[OPTCPU_TDI].val;
-    LabOptions_Combo[OPTCOMBO_SDINUM].val = LabOptions_CPU[OPTCPU_SDINUM].val;
-    LabOptions_Combo[OPTCOMBO_SDIDIR].val = LabOptions_CPU[OPTCPU_SDIDIR].val;
-    LabOptions_Combo[OPTCOMBO_TECH].val = LabOptions_Tech[OPTTECH_TECH].val;
-    LabOptions_Combo[OPTCOMBO_CTRAIR].val = LabOptions_CPU[OPTCPU_CTRAIR].val;
-    LabOptions_Combo[OPTCOMBO_CTRGRND].val = LabOptions_CPU[OPTCPU_CTRGRND].val;
-    LabOptions_Combo[OPTCOMBO_CTRFRAMES].val = LabOptions_CPU[OPTCPU_CTRFRAMES].val;
 }
 
 // Returns true once the CPU has settled out of a combo and is free to act.
@@ -6753,7 +6820,6 @@ void Event_Think(GOBJ *event)
     LabOptions_General[OPTGEN_HMNPCNT].val = hmn_data->dmg.percent;
     LabOptions_CPU[OPTCPU_PCNT].val = cpu_data->dmg.percent;
 
-    Lab_SyncComboShortcuts();
     Lab_ComboResetThink(cpu, cpu_data, eventData);
     
     // reset stale moves

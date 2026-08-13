@@ -2705,16 +2705,22 @@ enum lab_combo_option
 {
     OPTCOMBO_RESET,
     OPTCOMBO_DELAY,
-    OPTCOMBO_DI,
-    OPTCOMBO_SDINUM,
-    OPTCOMBO_SDIDIR,
-    OPTCOMBO_TECH,
-    OPTCOMBO_CTRAIR,
-    OPTCOMBO_CTRGRND,
-    OPTCOMBO_CTRFRAMES,
+    OPTCOMBO_ESCAPE,
 
     OPTCOMBO_COUNT
 };
+
+enum lab_combo_escape
+{
+    COMBOESC_CUSTOM,
+    COMBOESC_AIRDODGE,
+    COMBOESC_DOUBLEJUMP,
+    COMBOESC_ATTACK,
+
+    COMBOESC_COUNT
+};
+
+static const char *LabValues_ComboEscape[] = {"Custom", "Airdodge", "Double Jump", "Attack"};
 
 static EventOption LabOptions_Combo[OPTCOMBO_COUNT] = {
     {
@@ -2736,69 +2742,15 @@ static EventOption LabOptions_Combo[OPTCOMBO_COUNT] = {
         .format = "%d",
     },
 
-    // The options below are shortcuts. They write straight through to the
-    // real CPU options, and are kept in sync with them every frame, so
-    // changing one here or in CPU Options is the same thing.
     {
         .kind = OPTKIND_STRING,
-        .value_num = countof(LabValues_TDI),
-        .name = "DI Behavior",
-        .desc = {"Shortcut for CPU Options -> Trajectory DI."},
-        .values = LabValues_TDI,
-        .OnChange = Lab_ChangeComboDI,
-    },
-    {
-        .kind = OPTKIND_INT,
-        .value_num = 8,
-        .name = "SDI Amount",
-        .desc = {"Shortcut for CPU Options -> Smash DI Amount."},
-        .format = "%d Frames",
-        .OnChange = Lab_ChangeComboSDINum,
-    },
-    {
-        .kind = OPTKIND_STRING,
-        .value_num = countof(LabValues_SDIDir),
-        .name = "SDI Direction",
-        .desc = {"Shortcut for CPU Options -> Smash DI Direction."},
-        .values = LabValues_SDIDir,
-        .OnChange = Lab_ChangeComboSDIDir,
-    },
-    {
-        .kind = OPTKIND_STRING,
-        .value_num = countof(LabValues_Tech),
-        .name = "Tech Option",
-        .desc = {"Shortcut for Tech Options -> Tech Option."},
-        .values = LabValues_Tech,
-        .OnChange = Lab_ChangeComboTech,
-    },
-    {
-        .kind = OPTKIND_STRING,
-        .value_num = countof(LabValues_CounterAir),
-        .val = 4,
-        .name = "Counter Action (Air)",
-        .desc = {"Shortcut for CPU Options -> Counter Action (Air).",
-                 "What the CPU does once airborne hitstun ends."},
-        .values = LabValues_CounterAir,
-        .OnChange = Lab_ChangeComboCtrAir,
-    },
-    {
-        .kind = OPTKIND_STRING,
-        .value_num = countof(LabValues_CounterGround),
-        .val = 1,
-        .name = "Counter Action (Ground)",
-        .desc = {"Shortcut for CPU Options -> Counter Action (Ground).",
-                 "What the CPU does once grounded hitstun ends."},
-        .values = LabValues_CounterGround,
-        .OnChange = Lab_ChangeComboCtrGrnd,
-    },
-    {
-        .kind = OPTKIND_INT,
-        .value_num = 100,
-        .name = "Counter Delay",
-        .desc = {"Shortcut for CPU Options -> Counter Delay.",
-                 "Actionable frames before the CPU counters."},
-        .format = "%d Frames",
-        .OnChange = Lab_ChangeComboCtrFrames,
+        .value_num = countof(LabValues_ComboEscape),
+        .name = "Escape Option",
+        .desc = {"Set what the CPU does out of hitstun. Attack",
+                 "picks a move that suits its character.",
+                 "Writes into CPU Options, edit there to refine."},
+        .values = LabValues_ComboEscape,
+        .OnChange = Lab_ChangeComboEscape,
     },
 };
 
