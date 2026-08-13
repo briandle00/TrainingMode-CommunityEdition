@@ -129,6 +129,12 @@ id, so they are matched by the direction held when B was pressed.
 `Stale Level` is how many recent uses of the move to assume when working the
 percent out. 0 is fresh; each step takes another slice off the damage using
 melee's staling weights, so level 3 is the damage after three uses in a row.
+
+Staling follows the 9 place queue: places 1 through 9 reduce damage by 0.09x
+down to 0.01x, repeat appearances have their multipliers summed before being
+applied, and the result is `base - (base * sum)`. Damage is kept fractional
+throughout, since a 14 damage move at level 1 deals 12.74 and rounding it to 12
+moves the answer.
 That is usually the number you want, since a move that knocks down at 14% fresh
 does not knock down there once it has been used a few times in a combo.
 
