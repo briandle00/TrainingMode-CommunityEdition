@@ -134,9 +134,15 @@ Sliding off edge cancels the knockdown and leaves the CPU actionable, which is
 what makes it a reversal out of platform tech chases.
 
 It only fires straight out of a tech roll or a getup roll from a missed tech,
-which is when it comes up in play, and only when the CPU is actually near the
-edge — rolling inward does not set it up. Works off the stage edge as well as
-platforms. `Slide Off Else` names the DI to use the rest of the time.
+which is when it comes up in play; only when the CPU is actually near the edge,
+since rolling inward does not set it up; and only when the hit does not send the
+CPU into tumble, because then there is no knockdown to edge cancel and it is
+simply launched away. Works off the stage edge as well as platforms.
+`Slide Off Else` names the DI to use the rest of the time.
+
+The ground under the CPU is found by raycast rather than from its own ground
+index, which is cleared as soon as knockback lifts it — that is, on exactly the
+hits this cares about.
 
 ### New Smash DI direction: Toward Ground
 
@@ -147,6 +153,10 @@ Range is `6 units x N`, where `N` is the lower of Smash DI Amount and the move's
 hitlag. SDI only happens during hitlag, so the move caps how many inputs are
 actually available however many the option asks for — a 4 frame hitlag move
 cannot be SDIed 7 times.
+
+Options that depend on another option — the two `Else` rows, the reset delay,
+the percent range, the goal settings, the DK charge limits — are greyed out when
+that option is not selected, so it is clear which ones are actually in play.
 
 `Toward Ground Else` sets the direction to use when nothing is in range,
 offering every direction except Toward Ground itself. It resolves before the

@@ -2182,6 +2182,14 @@ static int Lab_TDISlideOff(LabData *eventData, FighterData *cpu_data,
             slideoff_roll_window, on_ground, (int)dist);
     }
 
+    // A hit that sends the CPU into tumble is not one you slide off. There is no
+    // knockdown to edge cancel - it is simply launched away - so the technique
+    // does not apply and the else direction should handle it instead.
+    int state = cpu_data->state_id;
+    if (state == ASID_DAMAGEFALL ||
+        (ASID_DAMAGEFLYHI <= state && state <= ASID_DAMAGEFLYROLL))
+        return 0;
+
     if (slideoff_roll_window <= 0)
         return 0;
 
@@ -7404,6 +7412,36 @@ void Event_Think(GOBJ *event)
     // when the tech windows is the 1f between hitlag and knockdown.
     if (cpu_data->flags.hitlag == 0 || eventData->cpu_tech_lockout > 2)
         eventData->cpu_tech_lockout--;
+
+    // Grey out options that depend on another option, so it is obvious which
+    // ones are actually in play rather than silently ignored.
+    {
+        int tdi = LabOptions_CPU[OPTCPU_TDI].val;
+        int sdi = LabOptions_CPU[OPTCPU_SDIDIR].val;
+        int slideoff_on = (tdi == CPUTDI_SLIDEOFF);
+
+        LabOptions_CPU[OPTCPU_SLIDEOFFELSE].disable = !slideoff_on;
+        LabOptions_CPU[OPTCPU_SLIDEOFFDEBUG].disable = !slideoff_on;
+        LabOptions_CPU[OPTCPU_SDIGROUNDELSE].disable = (sdi != SDIDIR_TOWARDGROUND);
+
+        int reset_on = LabOptions_Combo[OPTCOMBO_RESET].val;
+        int goal = LabOptions_Combo[OPTCOMBO_GOAL].val;
+        int rnd_pcnt = LabOptions_Combo[OPTCOMBO_RNDPCNT].val;
+
+        LabOptions_Combo[OPTCOMBO_DELAY].disable = !reset_on;
+        LabOptions_Combo[OPTCOMBO_PCNTMIN].disable = !rnd_pcnt;
+        LabOptions_Combo[OPTCOMBO_PCNTMAX].disable = !rnd_pcnt;
+        LabOptions_Combo[OPTCOMBO_GOALHITS].disable = (goal != COMBOGOAL_HITS);
+        LabOptions_Combo[OPTCOMBO_GOALSTREAK].disable = (goal == COMBOGOAL_OFF);
+
+        int dk_on = LabOptions_ComboDK[OPTDK_RANDOMIZE].val;
+        int dk_range = (LabOptions_ComboDK[OPTDK_MODE].val == 0);
+
+        LabOptions_ComboDK[OPTDK_MODE].disable = !dk_on;
+        LabOptions_ComboDK[OPTDK_MIN].disable = !dk_on || !dk_range;
+        LabOptions_ComboDK[OPTDK_MAX].disable = !dk_on || !dk_range;
+        LabOptions_ComboDK[OPTDK_OSD].disable = !dk_on;
+    }
 
     // remember a recent roll, for slideoff DI
     if (Lab_IsRollState(cpu_data->state_id))
