@@ -2703,42 +2703,20 @@ static EventMenu LabMenu_Tech = {
 
 enum lab_combo_option
 {
-    OPTCOMBO_PRESET,
     OPTCOMBO_RESET,
     OPTCOMBO_DELAY,
     OPTCOMBO_DI,
     OPTCOMBO_SDINUM,
     OPTCOMBO_SDIDIR,
     OPTCOMBO_TECH,
-    OPTCOMBO_CPUMENU,
-    OPTCOMBO_TECHMENU,
+    OPTCOMBO_CTRAIR,
+    OPTCOMBO_CTRGRND,
+    OPTCOMBO_CTRFRAMES,
 
     OPTCOMBO_COUNT
 };
 
-enum lab_combo_preset
-{
-    COMBOPRESET_CUSTOM,
-    COMBOPRESET_BASIC,
-    COMBOPRESET_MIXUP,
-    COMBOPRESET_ESCAPE,
-
-    COMBOPRESET_COUNT
-};
-
-static const char *LabValues_ComboPresets[] = {"Custom", "Basic", "DI Mixup", "Escape Drill"};
-
 static EventOption LabOptions_Combo[OPTCOMBO_COUNT] = {
-    {
-        .kind = OPTKIND_STRING,
-        .value_num = countof(LabValues_ComboPresets),
-        .name = "Combo Preset",
-        .desc = {"Apply a set of CPU options for combo practice.",
-                 "Changing anything afterwards is fine - the preset",
-                 "is only applied when you pick it."},
-        .values = LabValues_ComboPresets,
-        .OnChange = Lab_ChangeComboPreset,
-    },
     {
         .kind = OPTKIND_TOGGLE,
         .name = "Auto Reset",
@@ -2794,17 +2772,33 @@ static EventOption LabOptions_Combo[OPTCOMBO_COUNT] = {
         .OnChange = Lab_ChangeComboTech,
     },
     {
-        .kind = OPTKIND_MENU,
-        .menu = &LabMenu_CPU,
-        .name = "All CPU Options",
-        .desc = {"Everything else - counter actions, shielding,",
-                 "percent, mash out and position."},
+        .kind = OPTKIND_STRING,
+        .value_num = countof(LabValues_CounterAir),
+        .val = 4,
+        .name = "Counter Action (Air)",
+        .desc = {"Shortcut for CPU Options -> Counter Action (Air).",
+                 "What the CPU does once airborne hitstun ends."},
+        .values = LabValues_CounterAir,
+        .OnChange = Lab_ChangeComboCtrAir,
     },
     {
-        .kind = OPTKIND_MENU,
-        .menu = &LabMenu_Tech,
-        .name = "All Tech Options",
-        .desc = {"Tech and getup chances, lockout and tech traps."},
+        .kind = OPTKIND_STRING,
+        .value_num = countof(LabValues_CounterGround),
+        .val = 1,
+        .name = "Counter Action (Ground)",
+        .desc = {"Shortcut for CPU Options -> Counter Action (Ground).",
+                 "What the CPU does once grounded hitstun ends."},
+        .values = LabValues_CounterGround,
+        .OnChange = Lab_ChangeComboCtrGrnd,
+    },
+    {
+        .kind = OPTKIND_INT,
+        .value_num = 100,
+        .name = "Counter Delay",
+        .desc = {"Shortcut for CPU Options -> Counter Delay.",
+                 "Actionable frames before the CPU counters."},
+        .format = "%d Frames",
+        .OnChange = Lab_ChangeComboCtrFrames,
     },
 };
 
