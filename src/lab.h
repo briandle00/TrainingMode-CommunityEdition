@@ -877,6 +877,7 @@ enum lab_option
 {
     OPTLAB_GENERAL_OPTIONS,
     OPTLAB_CPU_OPTIONS,
+    OPTLAB_COMBO_OPTIONS,
     OPTLAB_RECORD_OPTIONS,
     OPTLAB_INFODISP_HMN,
     OPTLAB_INFODISP_CPU,
@@ -889,6 +890,66 @@ enum lab_option
 };
 
 static const char *LabOptions_CheckBox[] = {"", "X"};
+
+// COMBO TRAINING MENU --------------------------------------------------------
+
+enum lab_combo_option
+{
+    OPTCOMBO_PRESET,
+    OPTCOMBO_RESET,
+    OPTCOMBO_DELAY,
+
+    OPTCOMBO_COUNT
+};
+
+enum lab_combo_preset
+{
+    COMBOPRESET_CUSTOM,
+    COMBOPRESET_BASIC,
+    COMBOPRESET_MIXUP,
+    COMBOPRESET_ESCAPE,
+
+    COMBOPRESET_COUNT
+};
+
+static const char *LabValues_ComboPresets[] = {"Custom", "Basic", "DI Mixup", "Escape Drill"};
+
+static EventOption LabOptions_Combo[OPTCOMBO_COUNT] = {
+    {
+        .kind = OPTKIND_STRING,
+        .value_num = countof(LabValues_ComboPresets),
+        .name = "Combo Preset",
+        .desc = {"Apply a set of CPU options for combo practice.",
+                 "Changing anything afterwards is fine - the preset",
+                 "is only applied when you pick it."},
+        .values = LabValues_ComboPresets,
+        .OnChange = Lab_ChangeComboPreset,
+    },
+    {
+        .kind = OPTKIND_TOGGLE,
+        .name = "Auto Reset",
+        .desc = {"Return to the saved position once the CPU",
+                 "recovers from a combo."},
+        .val = 0,
+        .OnChange = Lab_ChangeComboReset,
+    },
+    {
+        .kind = OPTKIND_INT,
+        .value_num = 121,
+        .val = 30,
+        .value_min = 0,
+        .name = "Reset Delay",
+        .desc = {"Frames to wait after the CPU is actionable",
+                 "before resetting."},
+        .format = "%d",
+    },
+};
+
+static EventMenu LabMenu_Combo = {
+    .name = "Combo Training",
+    .option_num = countof(LabOptions_Combo),
+    .options = LabOptions_Combo,
+};
 
 static EventOption LabOptions_Main[OPTLAB_COUNT] = {
     {
@@ -903,6 +964,13 @@ static EventOption LabOptions_Main[OPTLAB_COUNT] = {
         .menu = &LabMenu_CPU,
         .name = "CPU Options",
         .desc = {"Configure CPU behavior."},
+    },
+    {
+        .kind = OPTKIND_MENU,
+        .menu = &LabMenu_Combo,
+        .name = "Combo Training",
+        .desc = {"Auto reset after a combo, plus presets for",
+                 "practicing combos on the CPU."},
     },
     {
         .kind = OPTKIND_MENU,
