@@ -2211,6 +2211,7 @@ static EventOption LabOptions_CPU[OPTCPU_COUNT] = {
         .desc = {"Adjust how the CPU will alter their knockback",
                  "trajectory."},
         .values = LabValues_TDI,
+        .OnChange = Lab_RefreshAvailability,
     },
     {
         .kind = OPTKIND_STRING,
@@ -2243,6 +2244,7 @@ static EventOption LabOptions_CPU[OPTCPU_COUNT] = {
         .desc = {"Adjust the direction in which the CPU will alter ",
                  "their position during hitstop."},
         .values = LabValues_SDIDir,
+        .OnChange = Lab_RefreshAvailability,
     },
     {
         .kind = OPTKIND_STRING,
@@ -2733,6 +2735,7 @@ enum lab_combo_option
     OPTCOMBO_DELAY,
     OPTCOMBO_ESCAPE,
     OPTCOMBO_PCNTSWITCH,
+    OPTCOMBO_KNOCKDOWNPCNT,
     OPTCOMBO_SAVELOW,
     OPTCOMBO_SAVEHIGH,
     OPTCOMBO_RNDPOS,
@@ -2785,6 +2788,7 @@ static EventOption LabOptions_ComboDK[OPTDK_COUNT] = {
         .desc = {"Give DK a random Giant Punch charge on every",
                  "randomized reset."},
         .val = 0,
+        .OnChange = Lab_RefreshAvailability,
     },
     {
         .kind = OPTKIND_STRING,
@@ -2793,6 +2797,7 @@ static EventOption LabOptions_ComboDK[OPTDK_COUNT] = {
         .desc = {"Range picks anywhere between the two limits.",
                  "None or Full only ever gives 0 or a full punch."},
         .values = LabValues_ComboDKMode,
+        .OnChange = Lab_RefreshAvailability,
     },
     {
         .kind = OPTKIND_INT,
@@ -2882,6 +2887,14 @@ static EventOption LabOptions_Combo[OPTCOMBO_COUNT] = {
     },
     {
         .kind = OPTKIND_FUNC,
+        .name = "Set Switch to Knockdown %",
+        .desc = {"Set Percent Switch to the percent at which the",
+                 "last move to hit the CPU starts knocking it",
+                 "down. Hit the CPU with the move first."},
+        .OnSelect = Lab_ComboSetKnockdownPercent,
+    },
+    {
+        .kind = OPTKIND_FUNC,
         .name = "Save as Low Percent",
         .desc = {"Store every CPU and tech option as the set to",
                  "use below the switch percent."},
@@ -2915,6 +2928,7 @@ static EventOption LabOptions_Combo[OPTCOMBO_COUNT] = {
         .desc = {"Give the CPU a random percent within the range",
                  "below on each reset."},
         .val = 0,
+        .OnChange = Lab_RefreshAvailability,
     },
     {
         .kind = OPTKIND_INT,
@@ -2942,6 +2956,7 @@ static EventOption LabOptions_Combo[OPTCOMBO_COUNT] = {
                  "repeats until it is cleared, then a new one is",
                  "randomized."},
         .values = LabValues_ComboGoal,
+        .OnChange = Lab_RefreshAvailability,
     },
     {
         .kind = OPTKIND_INT,
