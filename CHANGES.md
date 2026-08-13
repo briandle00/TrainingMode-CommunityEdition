@@ -203,9 +203,14 @@ direction outright.
 `opening.bnr` carries the name, maker and description shown alongside the game.
 Those now read TM-CE v1.4 20DK and UnclePunch, Aitch, SNEAKY_URKEL.
 
-The credits inside the banner picture itself are pixels in a 96x32 texture, not
-text, so they are unchanged. `banner.png` in the repo root is that texture
-decoded, for editing and re-encoding if wanted.
+The credits inside the banner picture are pixels in a 96x32 texture rather than
+text, so they were redrawn: the two line "UnclePunch and Aitch" is now three
+lines reading UNCLEPUNCH, AITCH, SNEAKY_URKEL.
+
+The band is only 48x16 with the border and the MODE lettering around it, which
+leaves room for a 3x4 pixel font - four rows rather than five, so there is a
+blank row between lines to keep them apart. `banner.png` is the texture decoded,
+if it wants redoing.
 
 ## Building
 
