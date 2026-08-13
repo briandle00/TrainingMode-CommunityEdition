@@ -2132,25 +2132,59 @@ static int Lab_GroundEdge(FighterData *data, int *out_dir, float *out_dist)
     return 1;
 }
 
-// Slideoff DI: control stick toward the edge you are stood next to, C-stick
-// down. The C-stick is the actual mechanism - ASDI shifts you off the ledge,
-// which edge cancels the knockdown and leaves you actionable.
-//
-// It only works when you are already right by the edge, which in practice means
-// straight out of a tech roll. It is not a "somewhere on the platform" option.
-static int Lab_TDISlideOff(LabData *eventData, FighterData *cpu_data)
+// Tech rolls and getup rolls. Slideoff is a follow up to one of these, since
+// that is what leaves the CPU sat on the lip in the first place.
+static int Lab_IsRollState(int state)
 {
-    int dir;
+    return state == ASID_PASSIVESTANDF || state == ASID_PASSIVESTANDB ||
+           state == ASID_DOWNFOWARDU || state == ASID_DOWNBACKU ||
+           state == ASID_DOWNFOWARDD || state == ASID_DOWNBACKD;
+}
+
+// Slideoff DI. The C-stick down is handled by forcing ASDI, this part is the
+// trajectory DI, and it has to be a real DI angle rather than a raw stick
+// direction: DI shifts the knockback trajectory, so pushing flat sideways does
+// not reliably buy horizontal travel. Take whichever perpendicular to the
+// knockback carries the CPU toward the edge, which is the "DI away" that gives
+// the horizontal momentum to slide off with.
+//
+// Gated on having just rolled, because that is when this comes up - straight
+// out of a tech roll or a getup roll from a missed tech - and on actually being
+// near the edge, since rolling inward does not set it up.
+static int Lab_TDISlideOff(LabData *eventData, FighterData *cpu_data,
+                           float kb_angle, float dir)
+{
+    if (!Lab_IsRollState(cpu_data->state_id) &&
+        !Lab_IsRollState(cpu_data->TM.state_prev[0]))
+        return 0;
+
+    int edge_dir;
     float dist;
 
-    if (!Lab_GroundEdge(cpu_data, &dir, &dist))
+    if (!Lab_GroundEdge(cpu_data, &edge_dir, &dist))
         return 0;
 
     if (dist > SLIDEOFF_EDGE_RANGE)
         return 0;
 
-    eventData->cpu_tdi_lstick_x = 127 * dir;
-    eventData->cpu_tdi_lstick_y = 0;
+    float tdi_angle;
+    if (kb_angle <= M_PI)
+        tdi_angle = kb_angle - M_PI * 0.5 * dir;
+    else
+        tdi_angle = kb_angle + M_PI * 0.5 * dir;
+
+    float tdi_x = cos(tdi_angle) * 127;
+    float tdi_y = sin(tdi_angle) * 127;
+
+    // flip to whichever perpendicular points at the edge
+    if ((tdi_x > 0.f) != (edge_dir > 0))
+    {
+        tdi_x = -tdi_x;
+        tdi_y = -tdi_y;
+    }
+
+    eventData->cpu_tdi_lstick_x = tdi_x;
+    eventData->cpu_tdi_lstick_y = tdi_y;
     return 1;
 }
 
@@ -2285,7 +2319,7 @@ void CPUOnHit(void) {
     int slideoff = 0;
     if (tdi_kind == CPUTDI_SLIDEOFF)
     {
-        if (Lab_TDISlideOff(eventData, cpu_data))
+        if (Lab_TDISlideOff(eventData, cpu_data, kb_angle, dir))
         {
             tdi_kind = -1; // handled, fall through the switch
             slideoff = 1;
