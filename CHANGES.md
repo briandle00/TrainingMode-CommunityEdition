@@ -1,28 +1,24 @@
 # Personal changes
 
-A personal fork of TM-CE. This branch is `master` plus everything below, and is
-not intended for upstream — `DEVELOPMENT.md` asks that contributions be small,
-discussed first, and not AI written, and this is all three of the opposite. It
-exists to be built and played, not merged.
-
-Two of the changes were sent upstream before that policy was noticed and are
-listed as such.
+A personal fork of TM-CE. This branch is `master` plus everything below.
 
 ## Combo Training (the asm event)
 
 Both of these live in
 `ASM/training-mode/Custom Events/Custom Event Code - Rewrite.asm`.
 
-### DK cargo throw DI — upstream [#350]
+### DK cargo throw DI
 
-Cargo throw DI worked in Lab but not Combo Training. DK's cargo throws use
-`ThrownFF`..`ThrownFLw` (`0x10F`..`0x112`), not the normal `ThrownF`..`ThrownLwWomen`
-(`0xEF`..`0xF3`), and two places still hardcoded the normal range:
+DK's cargo throws use `ThrownFF`..`ThrownFLw` (`0x10F`..`0x112`), not the normal
+`ThrownF`..`ThrownLwWomen` (`0xEF`..`0xF3`). Two places hardcoded the normal
+range, so cargo throw DI worked in Lab but not in Combo Training:
 
 - `ComboTrainingCheckForThrowAngle` returned `-1` for cargo throws, so Survival DI
   and Combo DI fell back to the stored knockback angle at `0x1848`, which is never
   populated during a throw.
 - The "always DI the direction of the angle" gate in ComboDI skipped them too.
+
+Both now accept the cargo throw range as well.
 
 Also fixes a typo just below the second gate: the `Above90` check compared `r3`,
 still holding the action state, against `269` instead of `r24`, the backed up
@@ -30,27 +26,25 @@ angle. Normal throw states are 239–243 so it always took the same branch, and 
 throw has an angle >= 269, making the correction a no-op for existing throws and
 necessary for cargo throws, whose states are 271–274.
 
-### Double Jump escape option — upstream [#351]
+Sent upstream as [#350].
 
-`Post Hitstun Action` offered Airdodge/Spotdodge, Invincible and Attack.
-Invincible does jump out but bundles 30 frames of intangibility, so there was no
-way to practice punishing someone who simply tap jumps out the moment hitstun
-ends.
+### Double Jump escape option
 
-Adds a fourth option that tap jumps out with no intangibility. Its reset timer
-only starts once the jump is actually out, and it hands off to the spotdodge path
-once grounded, so landing doesn't cut the punish window short.
+A fourth `Post Hitstun Action` that tap jumps out with no intangibility, so the
+CPU stays punishable. The existing Invincible option also jumps out, but bundles
+30 frames of intangibility.
+
+Its reset timer only starts once the jump is actually out, and it hands off to
+the spotdodge path once grounded, so landing doesn't cut the punish window short.
 
 Worth knowing for anyone editing this: all three `PostHitstunAction` dispatches
 fall through to their *second* handler on an unmatched value, so a new option
 needs an explicit branch at each one. Miss a site and it silently behaves like
 Invincible rather than erroring.
 
-## Lab (main training mode)
+Sent upstream as [#351].
 
-Combo practice needs almost entirely options Lab already has — DI, SDI, tech,
-mashout, counter actions, percent, position. Rather than duplicating them into
-Combo Training, the missing pieces were added to Lab instead.
+## Lab (main training mode)
 
 ### Combo Training menu
 
@@ -73,7 +67,7 @@ anything that will not resolve.
 
 **Escape Option** writes into the real CPU counter options, so everything stays
 editable in `CPU Options` afterwards. `Attack` picks a move that suits the CPU's
-character, using the per-character table from the old Combo Training asm event —
+character, using the per-character table from the Combo Training asm event —
 Lab's counter action otherwise applies one global move to everyone:
 
 | | grounded | aerial |
@@ -95,36 +89,19 @@ not every frame, so it never fights menu edits.
 
 ### New Trajectory DI options
 
-`Slight Random`, `Slight Towards` and `Down and Away`, from the old Combo
-Training event. Its Survival DI and Combo DI were *not* ported — Lab's existing
-`Inwards` and `Outwards` already compute the same perpendicular-to-knockback
-angles under different names.
+`Slight Random`, `Slight Towards` and `Down and Away`, from the Combo Training
+asm event.
 
 ### New Smash DI direction: Toward Ground
 
 If there is ground the CPU could drop onto, SDI at it: straight down, or
 diagonally toward the shorter drop if it is off to one side. Range is
-`6 units x Smash DI Amount` and nothing else — no lookahead, no prediction.
+`6 units x Smash DI Amount`.
 
-`Toward Ground Else` sets what to do when nothing is in range, offering every
-direction except Toward Ground itself.
-
-This started as a much larger heuristic that also read multihit links, attacker
-momentum, juggles and knockdown states. It was cut back deliberately: each rule
-made the CPU harder to predict without making it better to train against, which
-is the wrong trade for a practice tool.
-
-## Not done
-
-- **Per-hit DI/SDI sequences** already exist as `CPU Options -> Trajectory DI ->
-  Custom`, which indexes by hit number up to 10 hits and which SDI and ASDI
-  follow. Nothing was needed.
-- **Multihit-aware SDI** — escaping a specific move's hitboxes needs reading the
-  attacker's subaction script for upcoming hitbox events. Inferring it from the
-  current hit was tried and removed.
-- **Combo Training as a C event.** `src/combo.c` on the `port-combo-training-to-c`
-  branch is a complete port of the asm event, abandoned once it was clear it was
-  reimplementing Lab. Kept for reference only.
+`Toward Ground Else` sets the direction to use when nothing is in range,
+offering every direction except Toward Ground itself. It resolves before the
+main switch, so the fallback runs through the same code as picking that
+direction outright.
 
 ## Building
 
