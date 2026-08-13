@@ -2156,7 +2156,7 @@ void Lab_RefreshAvailability(GOBJ *menu_gobj, int value)
 // and the menu picks from what has been seen.
 typedef struct KnockdownMove
 {
-    s16 dmg;
+    float dmg;
     s16 kbg;
     s16 bkb;
     s16 set_kb;
@@ -2230,7 +2230,7 @@ static void Lab_RecordKnockdownMoves(FighterData *hmn_data)
         if (!h->active)
             continue;
 
-        knockdown_moves[slot].dmg = h->dmg;
+        knockdown_moves[slot].dmg = h->dmg_f;
         knockdown_moves[slot].kbg = h->kb_growth;
         knockdown_moves[slot].bkb = h->kb;
         knockdown_moves[slot].set_kb = h->wdsk;
@@ -2266,10 +2266,10 @@ static float Lab_StaleMultiplier(int level)
 }
 
 // Melee's knockback formula. Percent is the victim's damage before the hit.
-static float Lab_Knockback(int percent, int dmg, int kbg, int bkb, float weight)
+static float Lab_Knockback(int percent, float dmg, int kbg, int bkb, float weight)
 {
-    float p = (float)(percent + dmg);
-    float d = (float)dmg;
+    float p = (float)percent + dmg;
+    float d = dmg;
 
     float kb = ((((p / 10.0f) + ((p * d) / 20.0f))
                  * (200.0f / (weight + 100.0f)) * 1.4f) + 18.0f)
@@ -2281,7 +2281,7 @@ static float Lab_Knockback(int percent, int dmg, int kbg, int bkb, float weight)
 // Percent at which a move first knocks the CPU down. Knockback of 80 is where
 // the victim is taken off their feet into tumble. Returns -1 when the move
 // never gets there, which is what set knockback moves do.
-static int Lab_KnockdownPercent(FighterData *cpu_data, KnockdownMove *move, int dmg)
+static int Lab_KnockdownPercent(FighterData *cpu_data, KnockdownMove *move, float dmg)
 {
     if (move->set_kb != 0)
         return -1; // set knockback ignores percent entirely
@@ -2316,9 +2316,9 @@ void Lab_ComboSetKnockdownPercent(GOBJ *menu_gobj)
     }
 
     int stale = LabOptions_Combo[OPTCOMBO_KNOCKDOWNSTALE].val;
-    int dmg = (int)((float)move->dmg * Lab_StaleMultiplier(stale));
-    if (dmg < 1)
-        dmg = 1;
+    float dmg = move->dmg * Lab_StaleMultiplier(stale);
+    if (dmg < 0.1f)
+        dmg = 0.1f;
 
     int percent = Lab_KnockdownPercent(cpu_data, move, dmg);
 
