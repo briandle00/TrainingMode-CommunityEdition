@@ -2043,6 +2043,9 @@ void CPUResetVars(void) {
 // actually reach scales with how many inputs it is set to make.
 #define SDI_UNITS_PER_INPUT 6.0f
 
+// Ground wider than this is the stage itself rather than a platform.
+#define COMBO_MAX_PLATFORM_WIDTH 80.0f
+
 // Is there ground within `reach` below (x, y)? Optionally reports the drop
 // distance so two candidates can be compared.
 static int Lab_GroundBelow(float x, float y, float reach, float *out_drop)
@@ -2060,6 +2063,33 @@ static int Lab_GroundBelow(float x, float y, float reach, float *out_drop)
     if (out_drop != 0)
         *out_drop = y - coll_pos.Y;
 
+    return 1;
+}
+
+// SDI toward the near edge of the platform the CPU is standing on, so it slides
+// off and the string ends. Returns 0 when not on a platform, since sliding off
+// the main stage floor is not a thing.
+static int Lab_SDISlideOff(LabData *eventData, FighterData *cpu_data)
+{
+    int line = cpu_data->coll_data.ground_index;
+    if (line < 0)
+        return 0;
+
+    Vec3 left;
+    Vec3 right;
+    GrColl_GetGroundLineEndLeft(line, &left);
+    GrColl_GetGroundLineEndRight(line, &right);
+
+    // the main stage floor is not something you slide off usefully
+    if ((right.X - left.X) > COMBO_MAX_PLATFORM_WIDTH)
+        return 0;
+
+    float x = cpu_data->phys.pos.X;
+    float to_left = x - left.X;
+    float to_right = right.X - x;
+
+    eventData->cpu_sdi_lstick_x = (to_right < to_left) ? 127 : -127;
+    eventData->cpu_sdi_lstick_y = 0;
     return 1;
 }
 
@@ -2303,6 +2333,33 @@ void CPUOnHit(void) {
             break;
         }
 
+        case (CPUTDI_TOWARDCENTER):
+        {
+            // DI the perpendicular that carries the CPU back toward the middle
+            // of the stage rather than out toward a blast zone.
+            float toward_middle = (cpu_data->phys.pos.X > 0.f) ? -1.f : 1.f;
+
+            float tdi_angle;
+            if (kb_angle <= M_PI)
+                tdi_angle = kb_angle - M_PI * 0.5 * dir;
+            else
+                tdi_angle = kb_angle + M_PI * 0.5 * dir;
+
+            float tdi_x = cos(tdi_angle) * 127;
+            float tdi_y = sin(tdi_angle) * 127;
+
+            // flip to whichever perpendicular points inward
+            if ((tdi_x > 0.f) != (toward_middle > 0.f))
+            {
+                tdi_x = -tdi_x;
+                tdi_y = -tdi_y;
+            }
+
+            eventData->cpu_tdi_lstick_x = tdi_x;
+            eventData->cpu_tdi_lstick_y = tdi_y;
+            break;
+        }
+
         case (CPUTDI_NONE):
         TDI_NONE:
         {
@@ -2375,6 +2432,16 @@ void CPUOnHit(void) {
     // Toward Ground resolves before the switch. If it found somewhere to drop
     // onto it has already set the inputs, otherwise it hands over to whichever
     // direction the else option names.
+    // Slide Off only means anything on a platform, so it falls back to Auto
+    // when the CPU is anywhere else.
+    if (sdi_kind == SDIDIR_SLIDEOFF)
+    {
+        if (Lab_SDISlideOff(eventData, cpu_data))
+            sdi_kind = -1;
+        else
+            sdi_kind = SDIDIR_AUTO;
+    }
+
     if (sdi_kind == SDIDIR_TOWARDGROUND)
     {
         if (Lab_SDITowardGround(eventData, cpu_data))
