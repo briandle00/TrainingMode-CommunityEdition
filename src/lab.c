@@ -2132,6 +2132,12 @@ static int Lab_GroundEdge(FighterData *data, int *out_dir, float *out_dist)
     return 1;
 }
 
+// Frames after a roll during which slideoff still counts as following it. By
+// the time a hit lands the roll is two states back - roll, then wait, then the
+// damage state - so checking the previous state alone never matched.
+#define SLIDEOFF_ROLL_WINDOW 45
+static int slideoff_roll_window = 0;
+
 // Tech rolls and getup rolls. Slideoff is a follow up to one of these, since
 // that is what leaves the CPU sat on the lip in the first place.
 static int Lab_IsRollState(int state)
@@ -2154,14 +2160,24 @@ static int Lab_IsRollState(int state)
 static int Lab_TDISlideOff(LabData *eventData, FighterData *cpu_data,
                            float kb_angle, float dir)
 {
-    if (!Lab_IsRollState(cpu_data->state_id) &&
-        !Lab_IsRollState(cpu_data->TM.state_prev[0]))
+    int edge_dir = 0;
+    float dist = -1.f;
+    int on_ground = Lab_GroundEdge(cpu_data, &edge_dir, &dist);
+
+    // Temporary: report what the gates saw, so this can be checked against what
+    // actually happens in game rather than guessed at again.
+    if (LabOptions_CPU[OPTCPU_SLIDEOFFDEBUG].val)
+    {
+        event_vars->Message_Display(
+            OSD_Miscellaneous, cpu_data->ply, MSGCOLOR_WHITE,
+            "roll %d  grnd %d  edge %d",
+            slideoff_roll_window, on_ground, (int)dist);
+    }
+
+    if (slideoff_roll_window <= 0)
         return 0;
 
-    int edge_dir;
-    float dist;
-
-    if (!Lab_GroundEdge(cpu_data, &edge_dir, &dist))
+    if (!on_ground)
         return 0;
 
     if (dist > SLIDEOFF_EDGE_RANGE)
@@ -7380,6 +7396,12 @@ void Event_Think(GOBJ *event)
     // when the tech windows is the 1f between hitlag and knockdown.
     if (cpu_data->flags.hitlag == 0 || eventData->cpu_tech_lockout > 2)
         eventData->cpu_tech_lockout--;
+
+    // remember a recent roll, for slideoff DI
+    if (Lab_IsRollState(cpu_data->state_id))
+        slideoff_roll_window = SLIDEOFF_ROLL_WINDOW;
+    else if (slideoff_roll_window > 0)
+        slideoff_roll_window--;
 
     // Disable the D-pad up button according to the OPTGEN_TAUNT value
     if (LabOptions_Controls[OPTCTRL_DPAD_UP].val == DPAD_U_DISABLED)

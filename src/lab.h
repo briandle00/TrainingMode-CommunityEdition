@@ -2132,6 +2132,7 @@ enum cpu_option
     OPTCPU_TECHOPTIONS,
     OPTCPU_TDI,
     OPTCPU_SLIDEOFFELSE,
+    OPTCPU_SLIDEOFFDEBUG,
     OPTCPU_CUSTOMTDI,
     OPTCPU_SDINUM,
     OPTCPU_SDIDIR,
@@ -2220,6 +2221,13 @@ static EventOption LabOptions_CPU[OPTCPU_COUNT] = {
         .desc = {"DI to use when the CPU is not stood right by",
                  "an edge to slide off."},
         .values = LabValues_TDI,
+    },
+    {
+        .kind = OPTKIND_TOGGLE,
+        .name = "Slide Off Debug",
+        .desc = {"Temporary. Reports what the slideoff gates saw:",
+                 "frames since a roll, grounded, distance to edge."},
+        .val = 0,
     },
     {
         .kind = OPTKIND_FUNC,
