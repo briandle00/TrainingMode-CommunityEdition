@@ -68,6 +68,7 @@ Sent upstream as [#351].
 | Goal | Off / Hit Count / Kill |
 | Goal Hit Count | hits needed to clear a setup |
 | Goal Streak | times in a row a setup must be cleared |
+| Handoff On Combo | Off / Port 1-4, hand the CPU to a port once a combo starts |
 | DK Options | submenu, Giant Punch charge randomization |
 
 **Auto Reset** starts counting as soon as the CPU can act again, so Reset Delay
@@ -110,6 +111,16 @@ either `Range`, picking anywhere between a lowest and highest number of windups,
 or `None or Full`, which only ever gives 0 or a full punch — the two cases that
 change what DK actually threatens. `Show Charge` puts the result on screen: full,
 none, or `n/10`.
+
+**Handoff On Combo** leaves the CPU idle until you land the first hit, then
+hands it to the named controller port for the rest of the combo, and takes it
+back on reset. It drives the existing `Controlled By` option, which flips the
+slot to human, repoints `pad_index`, and already bypasses all the CPU logic - so
+whatever is on that port plays the defence instead.
+
+The point is playing the punish against something external, an AI agent on
+another port being the case it was built for. See `phillip.sh` in the workspace
+for launching slippi-ai against this build.
 
 **Set Switch to Knockdown %** solves melee's knockback formula for the move
 picked in `Knockdown Move`, against the CPU's actual weight, and reports the
