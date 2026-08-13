@@ -4390,6 +4390,8 @@ ComboTrainingCheckIfInAir:
     beq ComboTrainingJumpAndInvincible
     cmpwi r3, 0x2
     beq ComboTrainingAerialAttack
+    cmpwi r3, 0x3
+    beq ComboTrainingDoubleJump
 
 ComboTrainingJumpAndInvincible:
     # Always Jump
@@ -4423,6 +4425,22 @@ ComboTrainingAerialAttack:
     stb r3, EventState(r31)
     b ComboTrainingPostHitstun
 
+ComboTrainingDoubleJump:
+    # Flick The Stick Up To Tap Jump Out
+    li r3, 127
+    stb r3, 0x1A8D(r29)                                 # Stick Y
+    # Last Frame's Stick Was Centered
+    li r3, 0x0
+    stw r3, 0x628(r29)
+    stw r3, 0x62C(r29)
+    # Stick Frame Timer Reset
+    li r3, 255
+    stb r3, 0x670(r29)
+    # Change State
+    li r3, 0x2
+    stb r3, EventState(r31)
+    b ComboTrainingPostHitstun
+
 # CHECK TO BECOME INVINCIBLE OUT OF GROUNDED LIGHT DAMAGE STATES
 ComboTrainingDamageGrounded:
     # Check For Hitstun (Can Act Out of Certain Light Damage States)
@@ -4438,6 +4456,8 @@ ComboTrainingDamageGrounded:
     beq ComboTrainingGroundedInvincibility
     cmpwi r3, 0x2
     beq ComboTrainingGroundedAttack
+    cmpwi r3, 0x3
+    beq ComboTrainingGroundedSpotdodge                  # Double Jump spotdodges on the ground
 
 ComboTrainingGroundedInvincibility:
     b ComboTrainingChangeStateToPostHitstun
@@ -4621,6 +4641,8 @@ ComboTrainingPostHitstun:
     beq ComboTrainingPostHitstun_GiveInvinc
     cmpwi r3, 0x2
     beq ComboTrainingPostHitstun_Attack
+    cmpwi r3, 0x3
+    beq ComboTrainingPostHitstun_DoubleJump
 
 ComboTrainingPostHitstun_GiveInvinc:
     # Constantly Press Jump If In The Air
@@ -4641,6 +4663,45 @@ ComboTrainingPostHitstun_GiveInvinc_ApplyInvinc:
     # UpdateGFX
     mr r3, r30
     branchl r12, GFX_UpdatePlayerGFX
+    # Set Timer if Not Set
+    lwz r3, 0x4(r31)
+    cmpwi r3, 0x0
+    bgt ComboTrainingCheckToReset
+    # Set Timer
+    li r3, 30
+    stw r3, 0x4(r31)
+    b ComboTrainingCheckToReset
+
+# ****************************************************************#
+
+ComboTrainingPostHitstun_DoubleJump:
+    # Once Grounded, Hand Off To The Default Option's Spotdodge Logic.
+    # It Owns The Reset Timer From There, So Landing Doesn't Cut The
+    # Punish Window Short.
+    lwz r3, 0xE0(r29)
+    cmpwi r3, 0x0
+    beq ComboTrainingPostHitstun_AirdodgeSpotdodge
+
+    # Only Start The Reset Timer Once The Jump Is Actually Out
+    lwz r3, 0x10(r29)
+    cmpwi r3, ASID_JumpAerialF
+    beq ComboTrainingPostHitstun_DoubleJump_SetTimer
+    cmpwi r3, ASID_JumpAerialB
+    beq ComboTrainingPostHitstun_DoubleJump_SetTimer
+
+    # Flick The Stick Up To Tap Jump Out
+    li r3, 127
+    stb r3, 0x1A8D(r29)                                 # Stick Y
+    # Last Frame's Stick Was Centered
+    li r3, 0x0
+    stw r3, 0x628(r29)
+    stw r3, 0x62C(r29)
+    # Stick Frame Timer Reset
+    li r3, 255
+    stb r3, 0x670(r29)
+    b ComboTrainingCheckToReset
+
+ComboTrainingPostHitstun_DoubleJump_SetTimer:
     # Set Timer if Not Set
     lwz r3, 0x4(r31)
     cmpwi r3, 0x0
@@ -5483,7 +5544,7 @@ ComboTrainingWindowInfo:
 # amount of options, amount of options in each window
 
     .long 0x04060304                                    # 5 windows, DI has 7 options, SDI has 4 Options, Tech Has 5 Options
-    .long 0x02020000                                    # PostHitstun has 3 options, Mash has 3 options
+    .long 0x03020000                                    # PostHitstun has 4 options, Mash has 3 options
 
 ####################################################
 
@@ -5618,6 +5679,10 @@ ComboTrainingWindowText:
     # Attack
     .long 0x41747461
     .long 0x636b0000
+
+    # Double Jump
+    .string "Double Jump"
+    .align 2
 
 ###################
 ## Grab Mash-Out ##
