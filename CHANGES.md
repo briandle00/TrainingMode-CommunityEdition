@@ -59,11 +59,10 @@ Sent upstream as [#351].
 | Save as Low Percent | snapshot every CPU and tech option as the low set |
 | Save as High Percent | snapshot every CPU and tech option as the high set |
 
-**Auto Reset** waits until the CPU is genuinely actionable and has finished its
-counter action — being actionable alone is not enough, since that happens the
-instant hitstun ends and would reset out from under the CPU's own escape.
-Entering recovery counts as combo over, and a 120 frame settle limit backstops
-anything that will not resolve.
+**Auto Reset** starts counting as soon as the CPU can act again, so Reset Delay
+means frames after the CPU is free to act. Being hit again cancels a pending
+reset. Entering recovery counts as combo over, and a 120 frame settle limit
+backstops anything that will not resolve.
 
 **Escape Option** writes into the real CPU counter options, so everything stays
 editable in `CPU Options` afterwards. `Attack` picks a move that suits the CPU's
@@ -95,8 +94,12 @@ asm event.
 ### New Smash DI direction: Toward Ground
 
 If there is ground the CPU could drop onto, SDI at it: straight down, or
-diagonally toward the shorter drop if it is off to one side. Range is
-`6 units x Smash DI Amount`.
+diagonally toward the shorter drop if it is off to one side.
+
+Range is `6 units x N`, where `N` is the lower of Smash DI Amount and the move's
+hitlag. SDI only happens during hitlag, so the move caps how many inputs are
+actually available however many the option asks for — a 4 frame hitlag move
+cannot be SDIed 7 times.
 
 `Toward Ground Else` sets the direction to use when nothing is in range,
 offering every direction except Toward Ground itself. It resolves before the
