@@ -2234,9 +2234,35 @@ static void Lab_RecordKnockdownMoves(FighterData *hmn_data)
         knockdown_moves[slot].kbg = h->kb_growth;
         knockdown_moves[slot].bkb = h->kb;
         knockdown_moves[slot].set_kb = h->wdsk;
+
+
         knockdown_moves[slot].seen = 1;
         return;
     }
+}
+
+// Melee takes a slice off a move's damage for each recent use of it, weighted
+// by how recent. Stale Level is how many of those recent slots the move is
+// assumed to occupy, so level 3 is the damage after using it three times in a
+// row - which is what you want when asking "when does this start knocking down
+// in a real combo" rather than off a fresh hit.
+static float Lab_StaleMultiplier(int level)
+{
+    static const float weights[9] = {
+        0.09f, 0.08f, 0.07f, 0.06f, 0.05f, 0.04f, 0.03f, 0.02f, 0.01f
+    };
+
+    if (level > 9)
+        level = 9;
+
+    float mult = 1.0f;
+    for (int i = 0; i < level; ++i)
+        mult -= weights[i];
+
+    if (mult < 0.01f)
+        mult = 0.01f;
+
+    return mult;
 }
 
 // Melee's knockback formula. Percent is the victim's damage before the hit.
@@ -2255,7 +2281,7 @@ static float Lab_Knockback(int percent, int dmg, int kbg, int bkb, float weight)
 // Percent at which a move first knocks the CPU down. Knockback of 80 is where
 // the victim is taken off their feet into tumble. Returns -1 when the move
 // never gets there, which is what set knockback moves do.
-static int Lab_KnockdownPercent(FighterData *cpu_data, KnockdownMove *move)
+static int Lab_KnockdownPercent(FighterData *cpu_data, KnockdownMove *move, int dmg)
 {
     if (move->set_kb != 0)
         return -1; // set knockback ignores percent entirely
@@ -2264,7 +2290,7 @@ static int Lab_KnockdownPercent(FighterData *cpu_data, KnockdownMove *move)
 
     for (int p = 0; p <= 999; ++p)
     {
-        if (Lab_Knockback(p, move->dmg, move->kbg, move->bkb, weight) >= 80.0f)
+        if (Lab_Knockback(p, dmg, move->kbg, move->bkb, weight) >= 80.0f)
             return p;
     }
 
@@ -2289,7 +2315,12 @@ void Lab_ComboSetKnockdownPercent(GOBJ *menu_gobj)
         return;
     }
 
-    int percent = Lab_KnockdownPercent(cpu_data, move);
+    int stale = LabOptions_Combo[OPTCOMBO_KNOCKDOWNSTALE].val;
+    int dmg = (int)((float)move->dmg * Lab_StaleMultiplier(stale));
+    if (dmg < 1)
+        dmg = 1;
+
+    int percent = Lab_KnockdownPercent(cpu_data, move, dmg);
 
     if (percent < 0)
     {
@@ -2299,9 +2330,15 @@ void Lab_ComboSetKnockdownPercent(GOBJ *menu_gobj)
     }
 
     LabOptions_Combo[OPTCOMBO_PCNTSWITCH].val = percent;
+
+    // Report the inputs alongside the answer. The formula and the knockback 80
+    // threshold are both taken on trust, so if a number looks wrong this shows
+    // whether the move data was captured correctly or the maths is off.
     event_vars->Message_Display(OSD_Miscellaneous, 0, MSGCOLOR_GREEN,
-                                "%s knocks down at %d%%",
-                                LabValues_KnockdownMove[slot], percent);
+                                "%s d%d g%d b%d w%d\nknocks down %d%%",
+                                LabValues_KnockdownMove[slot],
+                                move->dmg, move->kbg, move->bkb,
+                                (int)cpu_data->attr.weight, percent);
 }
 
 // Frames after a roll during which slideoff still counts as following it. By

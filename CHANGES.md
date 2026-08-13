@@ -57,6 +57,7 @@ Sent upstream as [#351].
 | Escape Option | Custom / Airdodge / Double Jump / Attack |
 | Percent Switch | swap the whole CPU and tech setup at this percent, 0 disables |
 | Knockdown Move | which of your moves to read |
+| Stale Level | how stale to assume that move is |
 | Set Switch to Knockdown % | set the switch to where that move starts knocking down |
 | Save as Low Percent | snapshot every CPU and tech option as the low set |
 | Save as High Percent | snapshot every CPU and tech option as the high set |
@@ -125,6 +126,12 @@ in on its own. Picking a move that has not been used yet says so.
 Specials are character specific action states and cannot be identified by state
 id, so they are matched by the direction held when B was pressed.
 
+`Stale Level` is how many recent uses of the move to assume when working the
+percent out. 0 is fresh; each step takes another slice off the damage using
+melee's staling weights, so level 3 is the damage after three uses in a row.
+That is usually the number you want, since a move that knocks down at 14% fresh
+does not knock down there once it has been used a few times in a combo.
+
 Set knockback moves report that they never knock down, since they ignore percent
 by definition.
 
@@ -184,6 +191,15 @@ does not run while the game is paused with the menu open.
 offering every direction except Toward Ground itself. It resolves before the
 main switch, so the fallback runs through the same code as picking that
 direction outright.
+
+## Banner
+
+`opening.bnr` carries the name, maker and description shown alongside the game.
+Those now read TM-CE v1.4 20DK and UnclePunch, Aitch, SNEAKY_URKEL.
+
+The credits inside the banner picture itself are pixels in a 96x32 texture, not
+text, so they are unchanged. `banner.png` in the repo root is that texture
+decoded, for editing and re-encoding if wanted.
 
 ## Building
 
