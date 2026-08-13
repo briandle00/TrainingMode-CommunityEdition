@@ -737,9 +737,21 @@ static void Lab_ComboProfileOnHit(FighterData *cpu_data)
 
 
 // Returns true once the CPU has settled out of a combo and is free to act.
-static int Lab_ComboHasEnded(GOBJ *cpu, FighterData *cpu_data)
+static int Lab_ComboHasEnded(GOBJ *cpu, FighterData *cpu_data, LabData *eventData)
 {
     if (cpu_data->flags.hitstun || cpu_data->flags.hitlag)
+        return 0;
+
+    // Being actionable is not the same as being done. The CPU is actionable the
+    // instant hitstun ends, which is before it has airdodged, jumped out or
+    // counter attacked - starting the countdown there resets out from under its
+    // own escape. Wait until the counter action is finished.
+    if (eventData->cpu_countering)
+        return 0;
+
+    if (eventData->cpu_state != CPUSTATE_START &&
+        eventData->cpu_state != CPUSTATE_NONE &&
+        eventData->cpu_state != CPUSTATE_RECOVER)
         return 0;
 
     return CPUAction_CheckASID(cpu, ASID_ACTIONABLE);
@@ -761,7 +773,7 @@ static void Lab_ComboResetThink(GOBJ *cpu, FighterData *cpu_data, LabData *event
     if (!combo_was_hit)
         return;
 
-    if (!Lab_ComboHasEnded(cpu, cpu_data))
+    if (!Lab_ComboHasEnded(cpu, cpu_data, eventData))
     {
         // hit again, or still stuck in the combo - hold off
         combo_reset_timer = 0;
@@ -1783,21 +1795,50 @@ static int Lab_GroundBelow(float x, float y, float reach, float *out_drop)
     return 1;
 }
 
+// Finds the attacker's active hitbox nearest the CPU. Returns 0 if none.
+static ftHit *Lab_NearestActiveHitbox(FighterData *hmn_data, FighterData *cpu_data)
+{
+    ftHit *nearest = 0;
+    float nearest_dist = 0.f;
+
+    for (int i = 0; i < (int)countof(hmn_data->hitbox); ++i)
+    {
+        ftHit *hit = &hmn_data->hitbox[i];
+        if (!hit->active)
+            continue;
+
+        float dx = cpu_data->phys.pos.X - hit->pos.X;
+        float dy = cpu_data->phys.pos.Y - hit->pos.Y;
+        float dist = dx * dx + dy * dy;
+
+        if (nearest == 0 || dist < nearest_dist)
+        {
+            nearest = hit;
+            nearest_dist = dist;
+        }
+    }
+
+    return nearest;
+}
+
 // Optimal SDI, in priority order:
 //   1. already grounded - nothing vertical to gain, so make distance instead
 //   2. ground straight below and in reach - SDI down to land and reset
 //   3. ground off to one side in reach - SDI diagonally onto it, which is what
 //      picks up platforms and stage edges
-//   4. nothing to land on - if the knockback is carrying the CPU further
-//      outward, SDI back inward to survive, otherwise get away from the opponent
+//   4. an active hitbox on the attacker - SDI straight out of it. This is the
+//      multihit escape: falco's pillar, dk's up air string, marth's dancing
+//      blade. Direction comes from the hitbox's own position, so it naturally
+//      accounts for which way the attacker is moving.
+//   5. no hitbox and nothing to land on - read the knockback. Mostly vertical
+//      means a juggle, so break out sideways away from the attacker. Mostly
+//      horizontal means being carried out, so SDI back in.
 //
 // Reach scales with the Smash DI Amount option, so a CPU set to few inputs
 // correctly decides it cannot reach things a CPU set to many inputs can.
 //
-// This reads real stage geometry rather than guessing, but it decides from the
-// position at hit time - it does not simulate the trajectory, and it does not
-// know where the attacker's hitboxes are, so it will not deliberately SDI out
-// of a multihit.
+// This still decides from the state at hit time and does not simulate the
+// trajectory forward.
 static void Lab_OptimalSDI(LabData *eventData, FighterData *cpu_data,
                            FighterData *hmn_data, float kb_angle)
 {
@@ -1840,18 +1881,43 @@ static void Lab_OptimalSDI(LabData *eventData, FighterData *cpu_data,
         return;
     }
 
-    // nothing reachable - fight the launch if it is sending the CPU offstage
-    float launch_x = cos(kb_angle);
-    int outward = (x > 0.0f && launch_x > 0.0f) || (x < 0.0f && launch_x < 0.0f);
-
-    if (outward)
+    // get out of whatever is currently hitting us
+    ftHit *hit = Lab_NearestActiveHitbox(hmn_data, cpu_data);
+    if (hit != 0)
     {
-        eventData->cpu_sdi_lstick_x = (x > 0.0f) ? -127 : 127;
+        float dx = x - hit->pos.X;
+        float dy = y - hit->pos.Y;
+
+        // straight up if we are sat right on the hitbox centre
+        if (dx == 0.f && dy == 0.f)
+        {
+            eventData->cpu_sdi_lstick_x = 0;
+            eventData->cpu_sdi_lstick_y = 127;
+            return;
+        }
+
+        float len = sqrtf(dx * dx + dy * dy);
+        eventData->cpu_sdi_lstick_x = (s8)((dx / len) * 127.f);
+        eventData->cpu_sdi_lstick_y = (s8)((dy / len) * 127.f);
+        return;
+    }
+
+    // nothing hitting us and nowhere to land - read the knockback instead
+    float kb_x = cpu_data->phys.kb_vel.X;
+    float kb_y = cpu_data->phys.kb_vel.Y;
+    float abs_kb_x = kb_x < 0.f ? -kb_x : kb_x;
+    float abs_kb_y = kb_y < 0.f ? -kb_y : kb_y;
+
+    if (abs_kb_y > abs_kb_x)
+    {
+        // being juggled - break the string sideways, away from the attacker
+        eventData->cpu_sdi_lstick_x = 127 * away;
         eventData->cpu_sdi_lstick_y = 0;
     }
     else
     {
-        eventData->cpu_sdi_lstick_x = 127 * away;
+        // being carried horizontally - SDI back against it to stay in
+        eventData->cpu_sdi_lstick_x = (kb_x > 0.f) ? -127 : 127;
         eventData->cpu_sdi_lstick_y = 0;
     }
 }
