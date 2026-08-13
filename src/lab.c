@@ -613,43 +613,6 @@ void Lab_ChangeComboReset(GOBJ *menu_gobj, int value)
     combo_was_hit = 0;
 }
 
-// Presets only write values when picked, so anything the user changes
-// afterwards sticks.
-void Lab_ChangeComboPreset(GOBJ *menu_gobj, int preset_id)
-{
-    if (preset_id == COMBOPRESET_CUSTOM)
-        return;
-
-    LabOptions_Combo[OPTCOMBO_RESET].val = 1;
-    combo_reset_timer = 0;
-    combo_was_hit = 0;
-
-    switch (preset_id)
-    {
-    case COMBOPRESET_BASIC:
-        // Predictable dummy for learning a combo's timing.
-        LabOptions_CPU[OPTCPU_TDI].val = CPUTDI_NONE;
-        LabOptions_CPU[OPTCPU_SDINUM].val = 0;
-        LabOptions_Tech[OPTTECH_TECH].val = CPUTECH_NONE;
-        break;
-
-    case COMBOPRESET_MIXUP:
-        // Random DI and tech, so the combo has to be adapted every rep.
-        LabOptions_CPU[OPTCPU_TDI].val = CPUTDI_RANDOM;
-        LabOptions_CPU[OPTCPU_SDINUM].val = 0;
-        LabOptions_Tech[OPTTECH_TECH].val = CPUTECH_RANDOM;
-        break;
-
-    case COMBOPRESET_ESCAPE:
-        // CPU fights to get out: DI, SDI and techs.
-        LabOptions_CPU[OPTCPU_TDI].val = CPUTDI_RANDOM;
-        LabOptions_CPU[OPTCPU_SDINUM].val = 4;
-        LabOptions_CPU[OPTCPU_SDIDIR].val = SDIDIR_RANDOM;
-        LabOptions_Tech[OPTTECH_TECH].val = CPUTECH_RANDOM;
-        break;
-    }
-}
-
 int CPUAction_CheckASID(GOBJ *cpu, int asid_kind);
 
 // The combo menu's shortcut options write straight through to the real CPU
@@ -674,6 +637,21 @@ void Lab_ChangeComboTech(GOBJ *menu_gobj, int value)
     LabOptions_Tech[OPTTECH_TECH].val = value;
 }
 
+void Lab_ChangeComboCtrAir(GOBJ *menu_gobj, int value)
+{
+    LabOptions_CPU[OPTCPU_CTRAIR].val = value;
+}
+
+void Lab_ChangeComboCtrGrnd(GOBJ *menu_gobj, int value)
+{
+    LabOptions_CPU[OPTCPU_CTRGRND].val = value;
+}
+
+void Lab_ChangeComboCtrFrames(GOBJ *menu_gobj, int value)
+{
+    LabOptions_CPU[OPTCPU_CTRFRAMES].val = value;
+}
+
 // Pull the real options back into the shortcuts, so changing something in
 // CPU Options is reflected here too.
 static void Lab_SyncComboShortcuts(void)
@@ -682,6 +660,9 @@ static void Lab_SyncComboShortcuts(void)
     LabOptions_Combo[OPTCOMBO_SDINUM].val = LabOptions_CPU[OPTCPU_SDINUM].val;
     LabOptions_Combo[OPTCOMBO_SDIDIR].val = LabOptions_CPU[OPTCPU_SDIDIR].val;
     LabOptions_Combo[OPTCOMBO_TECH].val = LabOptions_Tech[OPTTECH_TECH].val;
+    LabOptions_Combo[OPTCOMBO_CTRAIR].val = LabOptions_CPU[OPTCPU_CTRAIR].val;
+    LabOptions_Combo[OPTCOMBO_CTRGRND].val = LabOptions_CPU[OPTCPU_CTRGRND].val;
+    LabOptions_Combo[OPTCOMBO_CTRFRAMES].val = LabOptions_CPU[OPTCPU_CTRFRAMES].val;
 }
 
 // Returns true once the CPU has settled out of a combo and is free to act.
