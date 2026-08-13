@@ -123,16 +123,20 @@ carries the CPU back toward the middle of the stage rather than out toward a
 blast zone. This is the "DI to center stage when you cannot slide off" answer,
 and the same one for surviving a kill move.
 
-`Slide Off` performs slideoff DI: control stick toward the edge the CPU is stood
-next to, plus C-stick down. The C-stick is the part that does the work — ASDI
-shifts the CPU off the lip, which edge cancels the knockdown and leaves it
-actionable, which is what makes it a reversal out of platform tech chases.
+`Slide Off` performs slideoff DI. ASDI down does the drop, so it forces the
+C-stick down for that hit regardless of the ASDI option. The trajectory DI takes
+whichever perpendicular to the knockback carries the CPU toward the edge — the
+"DI away" that supplies the horizontal momentum to slide off with. It has to be a
+real DI angle rather than a raw sideways stick, since DI shifts the knockback
+trajectory rather than moving the CPU directly.
 
-It only applies from right by the edge, within 10 units, which in practice means
-straight out of a tech roll. It works off the stage edge as well as platforms.
-`Slide Off Else` names the DI to use anywhere else.
+Sliding off edge cancels the knockdown and leaves the CPU actionable, which is
+what makes it a reversal out of platform tech chases.
 
-Slideoff forces ASDI down for that hit, overriding the ASDI option.
+It only fires straight out of a tech roll or a getup roll from a missed tech,
+which is when it comes up in play, and only when the CPU is actually near the
+edge — rolling inward does not set it up. Works off the stage edge as well as
+platforms. `Slide Off Else` names the DI to use the rest of the time.
 
 ### New Smash DI direction: Toward Ground
 
