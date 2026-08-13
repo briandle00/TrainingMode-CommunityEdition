@@ -119,8 +119,15 @@ slot to human, repoints `pad_index`, and already bypasses all the CPU logic - so
 whatever is on that port plays the defence instead.
 
 The point is playing the punish against something external, an AI agent on
-another port being the case it was built for. See `phillip.sh` in the workspace
-for launching slippi-ai against this build.
+another port being the case it was built for.
+
+`phillip.sh` in the workspace launches a slippi-ai agent against this build. It
+passes `--dolphin.iso` pointed at `TM-CE.iso`, so the agent plays inside the
+training mode with everything above still live. Agents are read from a folder
+rather than configured, so adding one is dropping the file in - run it with no
+arguments to see what is there. The `basic-*` agents are human-imitation
+trained; the rest are reinforcement trained per matchup and stronger, so picking
+the agent is the difficulty dial.
 
 **Set Switch to Knockdown %** solves melee's knockback formula for the move
 picked in `Knockdown Move`, against the CPU's actual weight, and reports the
