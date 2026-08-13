@@ -2067,8 +2067,8 @@ static int Lab_GroundBelow(float x, float y, float reach, float *out_drop)
 }
 
 // SDI toward the near edge of the platform the CPU is standing on, so it slides
-// off and the string ends. Returns 0 when not on a platform, since sliding off
-// the main stage floor is not a thing.
+// off. Returns 0 when not on a platform, since sliding off the main stage floor
+// is not a thing.
 static int Lab_SDISlideOff(LabData *eventData, FighterData *cpu_data)
 {
     int line = cpu_data->coll_data.ground_index;
@@ -2093,17 +2093,20 @@ static int Lab_SDISlideOff(LabData *eventData, FighterData *cpu_data)
     return 1;
 }
 
-// Aim the CPU at ground it could actually drop onto: straight down if there is
+// Aim the CPU at ground it could actually reach. On a platform that means
+// sliding off the near edge; in the air it means straight down if there is
 // something directly below, otherwise diagonally toward whichever side has the
-// shorter drop. With nothing in range it returns 0 and the caller falls back to
-// following the TDI direction, same as Auto.
+// shorter drop. With nothing in range it returns 0 and the caller uses the
+// Toward Ground Else direction.
 //
 // Range is 6 units per SDI input, which is roughly what one SDI shifts the
 // victim, so it only fires when landing is genuinely reachable.
 static int Lab_SDITowardGround(LabData *eventData, FighterData *cpu_data)
 {
+    // Standing on a platform counts: sliding off the near edge is how you reach
+    // the ground from up there, and it ends the string on the way.
     if (cpu_data->phys.air_state == 0)
-        return 0;
+        return Lab_SDISlideOff(eventData, cpu_data);
 
     int sdi_num = LabOptions_CPU[OPTCPU_SDINUM].val;
     if (sdi_num < 1)
@@ -2432,16 +2435,6 @@ void CPUOnHit(void) {
     // Toward Ground resolves before the switch. If it found somewhere to drop
     // onto it has already set the inputs, otherwise it hands over to whichever
     // direction the else option names.
-    // Slide Off only means anything on a platform, so it falls back to Auto
-    // when the CPU is anywhere else.
-    if (sdi_kind == SDIDIR_SLIDEOFF)
-    {
-        if (Lab_SDISlideOff(eventData, cpu_data))
-            sdi_kind = -1;
-        else
-            sdi_kind = SDIDIR_AUTO;
-    }
-
     if (sdi_kind == SDIDIR_TOWARDGROUND)
     {
         if (Lab_SDITowardGround(eventData, cpu_data))
