@@ -2748,7 +2748,7 @@ enum lab_combo_option
     OPTCOMBO_GOAL,
     OPTCOMBO_GOALHITS,
     OPTCOMBO_GOALSTREAK,
-    OPTCOMBO_HANDOFF,
+    OPTCOMBO_SURVIVALDI,
     OPTCOMBO_DKMENU,
 
     OPTCOMBO_COUNT
@@ -2801,8 +2801,86 @@ static const char *LabValues_KnockdownMove[] = {
 
 static const char *LabValues_ComboDKMode[] = {"Range", "None or Full"};
 static const char *LabValues_ComboRndPos[] = {"Off", "On Stage", "On Platform", "Anywhere"};
-static const char *LabValues_ComboHandoff[] = {"Off", "Port 1", "Port 2", "Port 3", "Port 4"};
 static const char *LabValues_ComboGoal[] = {"Off", "Hit Count", "Kill"};
+
+// Survival DI overrides the CPU's usual DI, but only for the moves ticked here.
+// One entry per move, in the same order as lab_knockdown_move.
+enum lab_survival_di
+{
+    OPTSDI_PRESET,
+
+    OPTSDI_JAB, OPTSDI_DASH,
+    OPTSDI_FTILT, OPTSDI_UTILT, OPTSDI_DTILT,
+    OPTSDI_FSMASH, OPTSDI_USMASH, OPTSDI_DSMASH,
+    OPTSDI_NAIR, OPTSDI_FAIR, OPTSDI_BAIR, OPTSDI_UAIR, OPTSDI_DAIR,
+    OPTSDI_NEUTRALB, OPTSDI_SIDEB, OPTSDI_UPB, OPTSDI_DOWNB,
+
+    OPTSDI_COUNT
+};
+
+// OPTSDI_JAB must line up with KDMOVE_JAB so a move slot indexes straight in.
+#define OPTSDI_FIRSTMOVE OPTSDI_JAB
+
+enum lab_survival_preset
+{
+    SDIPRESET_CUSTOM,
+    SDIPRESET_NONE,
+    SDIPRESET_DKKILL,
+    SDIPRESET_ALL,
+
+    SDIPRESET_COUNT
+};
+
+static const char *LabValues_SurvivalPreset[] = {"Custom", "None", "DK Kill Moves", "All"};
+
+void Lab_ApplySurvivalPreset(GOBJ *menu_gobj, int value);
+
+#define SDI_MOVE_TOGGLE(label)                                       \
+    {                                                                \
+        .kind = OPTKIND_TOGGLE,                                      \
+        .name = label,                                               \
+        .desc = {"Use survival DI when hit by this move."},          \
+        .val = 0,                                                    \
+        .OnChange = Lab_ApplySurvivalPreset,                         \
+    }
+
+static EventOption LabOptions_SurvivalDI[OPTSDI_COUNT] = {
+    {
+        .kind = OPTKIND_STRING,
+        .value_num = countof(LabValues_SurvivalPreset),
+        .name = "Preset",
+        .desc = {"DK Kill Moves ticks Forward Air, Up B and",
+                 "Neutral B. Editing any move below sets this",
+                 "back to Custom."},
+        .values = LabValues_SurvivalPreset,
+        .val = SDIPRESET_CUSTOM,
+        .OnChange = Lab_ApplySurvivalPreset,
+    },
+
+    SDI_MOVE_TOGGLE("Jab"),
+    SDI_MOVE_TOGGLE("Dash Attack"),
+    SDI_MOVE_TOGGLE("Forward Tilt"),
+    SDI_MOVE_TOGGLE("Up Tilt"),
+    SDI_MOVE_TOGGLE("Down Tilt"),
+    SDI_MOVE_TOGGLE("Forward Smash"),
+    SDI_MOVE_TOGGLE("Up Smash"),
+    SDI_MOVE_TOGGLE("Down Smash"),
+    SDI_MOVE_TOGGLE("Neutral Air"),
+    SDI_MOVE_TOGGLE("Forward Air"),
+    SDI_MOVE_TOGGLE("Back Air"),
+    SDI_MOVE_TOGGLE("Up Air"),
+    SDI_MOVE_TOGGLE("Down Air"),
+    SDI_MOVE_TOGGLE("Neutral B"),
+    SDI_MOVE_TOGGLE("Side B"),
+    SDI_MOVE_TOGGLE("Up B"),
+    SDI_MOVE_TOGGLE("Down B"),
+};
+
+static EventMenu LabMenu_SurvivalDI = {
+    .name = "Survival DI Moves",
+    .option_num = countof(LabOptions_SurvivalDI),
+    .options = LabOptions_SurvivalDI,
+};
 
 static EventOption LabOptions_ComboDK[OPTDK_COUNT] = {
     {
@@ -3019,13 +3097,11 @@ static EventOption LabOptions_Combo[OPTCOMBO_COUNT] = {
         .format = "%d",
     },
     {
-        .kind = OPTKIND_STRING,
-        .value_num = countof(LabValues_ComboHandoff),
-        .name = "Handoff On Combo",
-        .desc = {"Leave the CPU idle until you start a combo,",
-                 "then hand it to this port. For playing the",
-                 "punish against an external bot."},
-        .values = LabValues_ComboHandoff,
+        .kind = OPTKIND_MENU,
+        .menu = &LabMenu_SurvivalDI,
+        .name = "Survival DI Moves",
+        .desc = {"Pick which of your moves the CPU survival DIs.",
+                 "Every other move uses the normal DI setting."},
     },
     {
         .kind = OPTKIND_MENU,
