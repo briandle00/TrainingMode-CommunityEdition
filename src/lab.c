@@ -1052,19 +1052,6 @@ static void Lab_ComboResetThink(GOBJ *hmn, FighterData *hmn_data, GOBJ *cpu,
     if (eventData->cpu_hitnum > 0)
         combo_was_hit = 1;
 
-    // Handoff: the CPU sits idle until the combo starts, then control passes to
-    // whichever port is named so something else can play the defence. Uses the
-    // existing Controlled By plumbing, which flips the slot to human and
-    // repoints pad_index, and which already skips the CPU logic entirely.
-    {
-        int handoff = LabOptions_Combo[OPTCOMBO_HANDOFF].val;
-        if (handoff != 0)
-        {
-            LabOptions_CPU[OPTCPU_CTRL_BY].val =
-                combo_was_hit ? (CTRLBY_PORT_1 + handoff - 1) : CTRLBY_NONE;
-        }
-    }
-
     // track the best the attempt managed, since cpu_hitnum is cleared when the
     // CPU's state machine resets
     if (eventData->cpu_hitnum > combo_attempt_hits)
@@ -1139,10 +1126,6 @@ static void Lab_ComboResetThink(GOBJ *hmn, FighterData *hmn_data, GOBJ *cpu,
     combo_attempt_killed = 0;
     combo_was_hit = 0;
     combo_idle_frames = 0;
-
-    // back to idle for the next rep
-    if (LabOptions_Combo[OPTCOMBO_HANDOFF].val != 0)
-        LabOptions_CPU[OPTCPU_CTRL_BY].val = CTRLBY_NONE;
 }
 
 void Lab_ChangeInfoPresetHMN(GOBJ *menu_gobj, int preset_id)
@@ -2204,6 +2187,42 @@ void Lab_RefreshAvailability(GOBJ *menu_gobj, int value)
     Lab_UpdateOptionAvailability();
 }
 
+// Shared by the preset row and every move toggle under it. OnChange is not told
+// which option moved, so the preset's own value is tracked here: if it differs
+// from what was last applied the preset itself changed, otherwise a move was
+// ticked by hand and the preset no longer describes the set.
+static int survival_preset_applied = SDIPRESET_CUSTOM;
+
+void Lab_ApplySurvivalPreset(GOBJ *menu_gobj, int value)
+{
+    int preset = LabOptions_SurvivalDI[OPTSDI_PRESET].val;
+
+    if (preset == survival_preset_applied)
+    {
+        LabOptions_SurvivalDI[OPTSDI_PRESET].val = SDIPRESET_CUSTOM;
+        survival_preset_applied = SDIPRESET_CUSTOM;
+        return;
+    }
+
+    if (preset != SDIPRESET_CUSTOM)
+    {
+        // DK's kill moves: fair, up b and a charged neutral b.
+        static const int dk_kill[] = {OPTSDI_FAIR, OPTSDI_UPB, OPTSDI_NEUTRALB};
+
+        int on = (preset == SDIPRESET_ALL) ? 1 : 0;
+        for (int i = OPTSDI_FIRSTMOVE; i < OPTSDI_COUNT; ++i)
+            LabOptions_SurvivalDI[i].val = on;
+
+        if (preset == SDIPRESET_DKKILL)
+        {
+            for (int i = 0; i < (int)countof(dk_kill); ++i)
+                LabOptions_SurvivalDI[dk_kill[i]].val = 1;
+        }
+    }
+
+    survival_preset_applied = preset;
+}
+
 // Melee only exposes a move's damage, knockback growth and base knockback while
 // its hitbox is live, so there is nothing to read from cold. Instead every move
 // is recorded the first time its hitboxes come out, whether or not it connects,
@@ -2592,6 +2611,15 @@ void CPUOnHit(void) {
 
     // calc TDI vals
     int tdi_kind = LabOptions_CPU[OPTCPU_TDI].val;
+
+    // Survival DI is per move: whatever the player is currently attacking with
+    // is looked up in the checklist, and only the ticked moves get DI'd for
+    // survival. Resolved before Slide Off so a ticked move wins over it.
+    {
+        int move = Lab_KnockdownSlotForState(hmn_data->state_id);
+        if (move >= 0 && LabOptions_SurvivalDI[OPTSDI_FIRSTMOVE + move].val)
+            tdi_kind = CPUTDI_TOWARDCENTER;
+    }
 
     // Slide Off resolves before the switch. With no edge in range it hands over
     // to whichever DI the else option names.

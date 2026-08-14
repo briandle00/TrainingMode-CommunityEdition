@@ -68,7 +68,7 @@ Sent upstream as [#351].
 | Goal | Off / Hit Count / Kill |
 | Goal Hit Count | hits needed to clear a setup |
 | Goal Streak | times in a row a setup must be cleared |
-| Handoff On Combo | Off / Port 1-4, hand the CPU to a port once a combo starts |
+| Survival DI Moves | submenu, per-move survival DI checklist |
 | DK Options | submenu, Giant Punch charge randomization |
 
 **Auto Reset** starts counting as soon as the CPU can act again, so Reset Delay
@@ -112,11 +112,28 @@ or `None or Full`, which only ever gives 0 or a full punch — the two cases tha
 change what DK actually threatens. `Show Charge` puts the result on screen: full,
 none, or `n/10`.
 
-**Handoff On Combo** leaves the CPU idle until you land the first hit, then
-hands it to the named controller port for the rest of the combo, and takes it
-back on reset. It drives the existing `Controlled By` option, which flips the
-slot to human, repoints `pad_index`, and already bypasses all the CPU logic - so
-whatever is on that port plays the defence instead.
+**Survival DI Moves** is a checklist, one row per move. Whatever you are
+currently attacking with is looked up in it, and only the ticked moves make the
+CPU DI for survival — everything else keeps whatever `Trajectory DI` is set to.
+That way the CPU DIs your kill move the way a real opponent would while still
+taking your combo starters normally, so a string ends in a realistic kill
+attempt rather than the CPU DIing everything or nothing.
+
+Survival DI here is the same perpendicular-toward-centre DI as the
+`Toward Center` trajectory option. A ticked move also wins over `Slide Off`.
+
+`Preset` fills the checklist in:
+
+| preset | ticks |
+|---|---|
+| None | nothing |
+| DK Kill Moves | Forward Air, Up B, Neutral B |
+| All | every move |
+
+Editing any move by hand drops `Preset` back to `Custom`. Moves are matched by
+the attacker's action state through the same lookup the `Knockdown Move` list
+uses, so specials resolve to neutral/side/up/down B from the stick direction
+held when B was pressed.
 
 The point is playing the punish against something external, an AI agent on
 another port being the case it was built for.
