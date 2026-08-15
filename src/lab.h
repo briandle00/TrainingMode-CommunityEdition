@@ -2748,6 +2748,7 @@ enum lab_combo_option
     OPTCOMBO_GOAL,
     OPTCOMBO_GOALHITS,
     OPTCOMBO_GOALSTREAK,
+    OPTCOMBO_SUCCESSOSD,
     OPTCOMBO_SURVIVALDI,
     OPTCOMBO_DKMENU,
 
@@ -2808,6 +2809,7 @@ static const char *LabValues_ComboGoal[] = {"Off", "Hit Count", "Kill"};
 enum lab_survival_di
 {
     OPTSDI_PRESET,
+    OPTSDI_SHOWUSED,
 
     OPTSDI_JAB, OPTSDI_DASH,
     OPTSDI_FTILT, OPTSDI_UTILT, OPTSDI_DTILT,
@@ -2855,6 +2857,14 @@ static EventOption LabOptions_SurvivalDI[OPTSDI_COUNT] = {
         .values = LabValues_SurvivalPreset,
         .val = SDIPRESET_CUSTOM,
         .OnChange = Lab_ApplySurvivalPreset,
+    },
+    {
+        // No OnChange - this one must not knock the preset back to Custom.
+        .kind = OPTKIND_TOGGLE,
+        .name = "Show When Used",
+        .desc = {"Print which move triggered survival DI,",
+                 "so you can confirm it is firing."},
+        .val = 0,
     },
 
     SDI_MOVE_TOGGLE("Jab"),
@@ -3095,6 +3105,15 @@ static EventOption LabOptions_Combo[OPTCOMBO_COUNT] = {
         .desc = {"Times in a row a setup must be cleared before a",
                  "new one is randomized."},
         .format = "%d",
+    },
+    {
+        .kind = OPTKIND_TOGGLE,
+        .name = "Show Success Rate",
+        .desc = {"Print how often you are clearing the goal,",
+                 "counted across the whole session. Needs a",
+                 "Goal set."},
+        .val = 0,
+        .OnChange = Lab_RefreshAvailability,
     },
     {
         .kind = OPTKIND_MENU,
