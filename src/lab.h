@@ -2749,6 +2749,7 @@ enum lab_combo_option
     OPTCOMBO_GOALHITS,
     OPTCOMBO_GOALSTREAK,
     OPTCOMBO_SUCCESSOSD,
+    OPTCOMBO_MOVEDATA,
     OPTCOMBO_SURVIVALDI,
     OPTCOMBO_DKMENU,
 
@@ -2836,6 +2837,7 @@ enum lab_survival_preset
 static const char *LabValues_SurvivalPreset[] = {"Custom", "None", "DK Kill Moves", "All"};
 
 void Lab_ApplySurvivalPreset(GOBJ *menu_gobj, int value);
+void Lab_ResetMoveData(GOBJ *menu_gobj, int value);
 
 #define SDI_MOVE_TOGGLE(label)                                       \
     {                                                                \
@@ -3114,6 +3116,15 @@ static EventOption LabOptions_Combo[OPTCOMBO_COUNT] = {
                  "Goal set."},
         .val = 0,
         .OnChange = Lab_RefreshAvailability,
+    },
+    {
+        .kind = OPTKIND_TOGGLE,
+        .name = "Show Move Data",
+        .desc = {"Print each move's real hitbox values the first",
+                 "time you throw it out: damage, angle, knockback",
+                 "growth, base knockback, set knockback."},
+        .val = 0,
+        .OnChange = Lab_ResetMoveData,
     },
     {
         .kind = OPTKIND_MENU,

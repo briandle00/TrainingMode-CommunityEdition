@@ -2260,6 +2260,7 @@ typedef struct KnockdownMove
     s16 kbg;
     s16 bkb;
     s16 set_kb;
+    s16 angle;
     u8 seen;
 } KnockdownMove;
 
@@ -2304,6 +2305,14 @@ static int Lab_KnockdownSlotForState(int state)
     return -1;
 }
 
+// Forget every move that has been seen, so turning Show Move Data on reprints
+// everything rather than staying silent for moves already used this session.
+void Lab_ResetMoveData(GOBJ *menu_gobj, int value)
+{
+    for (int i = 0; i < KDMOVE_COUNT; ++i)
+        knockdown_moves[i].seen = 0;
+}
+
 // Watch the player's hitboxes and record whatever move they belong to.
 static void Lab_RecordKnockdownMoves(FighterData *hmn_data)
 {
@@ -2334,7 +2343,22 @@ static void Lab_RecordKnockdownMoves(FighterData *hmn_data)
         knockdown_moves[slot].kbg = h->kb_growth;
         knockdown_moves[slot].bkb = h->kb;
         knockdown_moves[slot].set_kb = h->wdsk;
+        knockdown_moves[slot].angle = h->angle;
 
+        // Print each move once, the first time its hitbox comes out, so the
+        // real values can be read off rather than taken from a frame data site.
+        // Damage is scaled by 10 and printed as two ints - Message_Display is
+        // only used with integer formats elsewhere.
+        if (!knockdown_moves[slot].seen &&
+            LabOptions_Combo[OPTCOMBO_MOVEDATA].val)
+        {
+            int dmg10 = (int)(h->dmg_f * 10.0f);
+            event_vars->Message_Display(
+                OSD_Miscellaneous, hmn_data->ply, MSGCOLOR_YELLOW,
+                "%s  d%d.%d a%d g%d b%d w%d", LabValues_KnockdownMove[slot],
+                dmg10 / 10, dmg10 % 10, h->angle, h->kb_growth, h->kb,
+                h->wdsk);
+        }
 
         knockdown_moves[slot].seen = 1;
         return;

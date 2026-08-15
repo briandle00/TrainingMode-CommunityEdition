@@ -69,6 +69,7 @@ Sent upstream as [#351].
 | Goal Hit Count | hits needed to clear a setup |
 | Goal Streak | times in a row a setup must be cleared |
 | Show Success Rate | print how often the goal is being cleared |
+| Show Move Data | print each move's real hitbox values |
 | Survival DI Moves | submenu, per-move survival DI checklist |
 | DK Options | submenu, Giant Punch charge randomization |
 
@@ -142,6 +143,24 @@ and the percent profiles. The check runs in `CPUOnHit`, on the frame of the hit,
 so the attacker is still in the attacking state. Throws are not on the list and
 are left alone. `Show When Used` prints which move triggered it, to confirm it
 is firing.
+
+**Show Move Data** prints a move's real hitbox values the first time you throw
+it out:
+
+```
+Forward Air  d16.0 a361 g100 b20 w0
+```
+
+damage, angle, knockback growth, base knockback, set knockback. These come off
+the live hitbox rather than a frame data site, so they are what this build
+actually uses. Turning the option on forgets every move already seen, so
+everything reprints rather than staying silent. Angle 361 is Melee's Sakurai
+angle sentinel.
+
+It reuses the recorder behind `Knockdown Move`, which walks the player's active
+hitboxes every frame and maps them to a move through the action state. Only the
+first active hitbox of a move is recorded, so multi-hit moves report their first
+hit.
 
 **Show Success Rate** prints how often you are clearing the `Goal`, as
 `Success: cleared/attempts (pct)`. This is the overall record, separate from
