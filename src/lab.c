@@ -618,6 +618,13 @@ static int combo_attempt_killed = 0;
 // never settles - drifting offstage, stuck in a recovery - still resets.
 static int combo_idle_frames = 0;
 
+// Overall goal record for the session. Deliberately not touched by any of the
+// resets below - the streak requirement is about repeating one setup, this is
+// just how often the goal is met across everything. Leaving training mode
+// reloads the event and zeroes them.
+static int combo_goal_attempts = 0;
+static int combo_goal_cleared = 0;
+
 // Longest we will wait for the CPU to look "done" before resetting anyway.
 #define COMBO_SETTLE_LIMIT 120
 
@@ -1102,6 +1109,26 @@ static void Lab_ComboResetThink(GOBJ *hmn, FighterData *hmn_data, GOBJ *cpu,
         return;
 
     event_vars->Savestate_Load_v1(event_vars->savestate, 0);
+
+    // Score the attempt that just ended. Only attempts where you actually
+    // started something count, so sitting idle does not dilute the rate.
+    if (LabOptions_Combo[OPTCOMBO_GOAL].val != COMBOGOAL_OFF && combo_was_hit)
+    {
+        int met = Lab_ComboGoalMet();
+
+        combo_goal_attempts++;
+        if (met)
+            combo_goal_cleared++;
+
+        if (LabOptions_Combo[OPTCOMBO_SUCCESSOSD].val)
+        {
+            event_vars->Message_Display(
+                OSD_Miscellaneous, hmn_data->ply,
+                met ? MSGCOLOR_GREEN : MSGCOLOR_WHITE, "Success: %d/%d (%d%%)",
+                combo_goal_cleared, combo_goal_attempts,
+                (combo_goal_cleared * 100) / combo_goal_attempts);
+        }
+    }
 
     if (Lab_ComboRandomizes())
     {
@@ -2614,11 +2641,24 @@ void CPUOnHit(void) {
 
     // Survival DI is per move: whatever the player is currently attacking with
     // is looked up in the checklist, and only the ticked moves get DI'd for
-    // survival. Resolved before Slide Off so a ticked move wins over it.
+    // survival.
+    //
+    // This is deliberately the highest priority DI decision - it is resolved
+    // first, and nothing below reads the menu setting again, so a ticked move
+    // beats Slide Off, the percent profiles and everything else. CPUOnHit runs
+    // on the frame of the hit, so state_id is still the attacking state.
+    // Throws are not on the list and resolve to -1, leaving them alone.
     {
         int move = Lab_KnockdownSlotForState(hmn_data->state_id);
         if (move >= 0 && LabOptions_SurvivalDI[OPTSDI_FIRSTMOVE + move].val)
+        {
             tdi_kind = CPUTDI_TOWARDCENTER;
+
+            if (LabOptions_SurvivalDI[OPTSDI_SHOWUSED].val)
+                event_vars->Message_Display(OSD_Miscellaneous, cpu_data->ply,
+                                            MSGCOLOR_YELLOW, "Survival DI: %s",
+                                            LabValues_KnockdownMove[move]);
+        }
     }
 
     // Slide Off resolves before the switch. With no edge in range it hands over
@@ -7343,6 +7383,7 @@ static void Lab_UpdateOptionAvailability(void)
     LabOptions_Combo[OPTCOMBO_PCNTMAX].disable = !rnd_pcnt;
     LabOptions_Combo[OPTCOMBO_GOALHITS].disable = (goal != COMBOGOAL_HITS);
     LabOptions_Combo[OPTCOMBO_GOALSTREAK].disable = (goal == COMBOGOAL_OFF);
+    LabOptions_Combo[OPTCOMBO_SUCCESSOSD].disable = (goal == COMBOGOAL_OFF);
 
     int dk_on = LabOptions_ComboDK[OPTDK_RANDOMIZE].val;
     int dk_range = (LabOptions_ComboDK[OPTDK_MODE].val == 0);

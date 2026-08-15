@@ -68,6 +68,7 @@ Sent upstream as [#351].
 | Goal | Off / Hit Count / Kill |
 | Goal Hit Count | hits needed to clear a setup |
 | Goal Streak | times in a row a setup must be cleared |
+| Show Success Rate | print how often the goal is being cleared |
 | Survival DI Moves | submenu, per-move survival DI checklist |
 | DK Options | submenu, Giant Punch charge randomization |
 
@@ -134,6 +135,20 @@ Editing any move by hand drops `Preset` back to `Custom`. Moves are matched by
 the attacker's action state through the same lookup the `Knockdown Move` list
 uses, so specials resolve to neutral/side/up/down B from the stick direction
 held when B was pressed.
+
+Survival DI is the highest priority DI decision. It is resolved first, and
+nothing after it reads the DI setting again, so a ticked move beats `Slide Off`
+and the percent profiles. The check runs in `CPUOnHit`, on the frame of the hit,
+so the attacker is still in the attacking state. Throws are not on the list and
+are left alone. `Show When Used` prints which move triggered it, to confirm it
+is firing.
+
+**Show Success Rate** prints how often you are clearing the `Goal`, as
+`Success: cleared/attempts (pct)`. This is the overall record, separate from
+`Goal Streak` — the streak is about repeating one setup until it is clean,
+this is every attempt you have made. Only attempts where you actually landed a
+hit count, so idling does not dilute it, and the tally only clears when you
+leave training mode.
 
 The point is playing the punish against something external, an AI agent on
 another port being the case it was built for.
