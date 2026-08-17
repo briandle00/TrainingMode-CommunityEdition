@@ -97,11 +97,16 @@ Lab's counter action otherwise applies one global move to everyone:
 
 **Randomized setups.** Every piece is independent, so any combination works.
 Position picks a spot by raycasting for ground, so it works on any stage; the
-zone filter tells platforms from the stage by height above the main floor. That
-floor is found by sampling nine points across the stage and keeping the lowest
-ground - a single ray at x=0 hit Battlefield's top platform and called it the
-floor, which let every platform pass as `On Stage`. The
-CPU is always placed just in front of you, the same as pressing DPad down.
+zone filter asks the collision data whether the line it landed on is a platform,
+using the `is_drop` flag Melee sets on exactly the surfaces you can drop
+through. The CPU is always placed just in front of you, the same as pressing
+DPad down.
+
+That started out as a height test against the main floor, which was wrong twice
+over: a single ray at x=0 found Battlefield's *top platform* and called it the
+floor, so everything passed as `On Stage`; and even with the floor located
+correctly, height still misreads Fountain of Dreams, whose platforms descend to
+within a few units of the stage.
 Facing and percent are separate toggles; turning around brings the CPU round to
 the front with you rather than leaving it behind.
 
