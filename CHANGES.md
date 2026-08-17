@@ -97,7 +97,10 @@ Lab's counter action otherwise applies one global move to everyone:
 
 **Randomized setups.** Every piece is independent, so any combination works.
 Position picks a spot by raycasting for ground, so it works on any stage; the
-zone filter tells platforms from the stage by height above the main floor. The
+zone filter tells platforms from the stage by height above the main floor. That
+floor is found by sampling nine points across the stage and keeping the lowest
+ground - a single ray at x=0 hit Battlefield's top platform and called it the
+floor, which let every platform pass as `On Stage`. The
 CPU is always placed just in front of you, the same as pressing DPad down.
 Facing and percent are separate toggles; turning around brings the CPU round to
 the front with you rather than leaving it behind.

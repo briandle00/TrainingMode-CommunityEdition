@@ -818,19 +818,39 @@ static float Lab_RandomRangeF(float low, float high)
 }
 
 // Height of the main stage floor, used to tell platforms from the stage.
+//
+// Casting a single ray at x=0 does not work: Battlefield's top platform sits
+// exactly there, so the "floor" came back as that platform and every real
+// platform then measured as level with it, which let them through as stage.
+// Sample across the stage instead and keep the lowest ground found - platforms
+// are always above the floor, never below it.
 static float Lab_StageFloorY(void)
 {
-    Vec3 coll_pos;
-    int line_index;
-    int line_kind;
-    Vec3 line_unk;
+    const int samples = 9;
+    float lowest = 0.f;
+    int found = 0;
 
-    if (GrColl_RaycastGround(&coll_pos, &line_index, &line_kind, &line_unk,
-                             -1, -1, -1, 0, 0.f, COMBO_PLACE_TOP, 0.f,
-                             -COMBO_PLACE_DROP, 0) == 1)
-        return coll_pos.Y;
+    for (int i = 0; i < samples; ++i)
+    {
+        float x = -COMBO_PLACE_RANGE
+                  + (2.f * COMBO_PLACE_RANGE) * ((float)i / (samples - 1));
 
-    return 0.f;
+        Vec3 coll_pos;
+        int line_index;
+        int line_kind;
+        Vec3 line_unk;
+
+        if (GrColl_RaycastGround(&coll_pos, &line_index, &line_kind, &line_unk,
+                                 -1, -1, -1, 0, x, COMBO_PLACE_TOP, x,
+                                 -COMBO_PLACE_DROP, 0) != 1)
+            continue;
+
+        if (!found || coll_pos.Y < lowest)
+            lowest = coll_pos.Y;
+        found = 1;
+    }
+
+    return found ? lowest : 0.f;
 }
 
 // Finds somewhere to stand matching the requested zone. Returns 0 if nothing
