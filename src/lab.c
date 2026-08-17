@@ -810,55 +810,39 @@ static void Lab_ComboProfileOnHit(FighterData *cpu_data)
 #define COMBO_PLACE_DROP 160.0f
 
 // A platform is ground meaningfully above the main stage floor.
-#define COMBO_PLATFORM_MIN_HEIGHT 8.0f
 
 static float Lab_RandomRangeF(float low, float high)
 {
     return low + (high - low) * HSD_Randf();
 }
 
-// Height of the main stage floor, used to tell platforms from the stage.
+// Is this collision line a platform?
 //
-// Casting a single ray at x=0 does not work: Battlefield's top platform sits
-// exactly there, so the "floor" came back as that platform and every real
-// platform then measured as level with it, which let them through as stage.
-// Sample across the stage instead and keep the lowest ground found - platforms
-// are always above the floor, never below it.
-static float Lab_StageFloorY(void)
+// Melee already knows: every line carries an is_drop flag, set on exactly the
+// surfaces you can drop through, which is what makes a platform a platform.
+// Ask the collision data rather than guessing from height.
+//
+// Height was the obvious heuristic and it was wrong twice over. Measuring
+// against a single ray at x=0 picked up Battlefield's top platform as "the
+// floor", so everything read as stage. Even with the floor found correctly it
+// still misclassifies Fountain of Dreams, whose platforms descend to within a
+// few units of the stage, and anything sitting under Yoshi's Story.
+static int Lab_LineIsPlatform(int line_index)
 {
-    const int samples = 9;
-    float lowest = 0.f;
-    int found = 0;
+    CollDataStage *coll = stc_colldata ? *stc_colldata : 0;
 
-    for (int i = 0; i < samples; ++i)
-    {
-        float x = -COMBO_PLACE_RANGE
-                  + (2.f * COMBO_PLACE_RANGE) * ((float)i / (samples - 1));
+    if (coll == 0 || coll->lines == 0)
+        return 0;
+    if (line_index < 0 || line_index >= coll->line_num)
+        return 0;
 
-        Vec3 coll_pos;
-        int line_index;
-        int line_kind;
-        Vec3 line_unk;
-
-        if (GrColl_RaycastGround(&coll_pos, &line_index, &line_kind, &line_unk,
-                                 -1, -1, -1, 0, x, COMBO_PLACE_TOP, x,
-                                 -COMBO_PLACE_DROP, 0) != 1)
-            continue;
-
-        if (!found || coll_pos.Y < lowest)
-            lowest = coll_pos.Y;
-        found = 1;
-    }
-
-    return found ? lowest : 0.f;
+    return coll->lines[line_index].is_drop;
 }
 
 // Finds somewhere to stand matching the requested zone. Returns 0 if nothing
 // suitable turned up, in which case the caller leaves the fighters alone.
 static int Lab_ComboFindSpot(int zone, Vec3 *out_pos, int *out_line)
 {
-    float floor_y = Lab_StageFloorY();
-
     for (int i = 0; i < COMBO_PLACE_TRIES; ++i)
     {
         float x = Lab_RandomRangeF(-COMBO_PLACE_RANGE, COMBO_PLACE_RANGE);
@@ -873,7 +857,7 @@ static int Lab_ComboFindSpot(int zone, Vec3 *out_pos, int *out_line)
                                  -COMBO_PLACE_DROP, 0) != 1)
             continue;
 
-        int is_platform = (coll_pos.Y - floor_y) > COMBO_PLATFORM_MIN_HEIGHT;
+        int is_platform = Lab_LineIsPlatform(line_index);
 
         if (zone == RNDPOS_STAGE && is_platform)
             continue;
