@@ -102,13 +102,15 @@ using the `is_drop` flag Melee sets on exactly the surfaces you can drop
 through. The CPU is always placed just in front of you, the same as pressing
 DPad down.
 
-That started out as a height test against the main floor, which was wrong twice
-over: a single ray at x=0 found Battlefield's *top platform* and called it the
-floor, so everything passed as `On Stage`; and even with the floor located
-correctly, height still misreads Fountain of Dreams, whose platforms descend to
-within a few units of the stage.
 Facing and percent are separate toggles; turning around brings the CPU round to
 the front with you rather than leaving it behind.
+
+The zone filter started out as a height test against the main floor, which was
+wrong twice over: a single ray at x=0 found Battlefield's *top platform* and
+called it the floor, so everything passed as `On Stage`; and even with the floor
+located correctly, height still misreads Fountain of Dreams, whose platforms
+descend to within a few units of the stage. The collision flag has neither
+problem.
 
 **Goals.** A setup can require a number of hits or a kill, and `Goal Streak` sets
 how many times in a row it must be cleared. Until then the same setup repeats,
@@ -116,11 +118,21 @@ so a missed attempt means another go at it rather than a new one. With no goal
 set every attempt counts as cleared. Once a setup is cleared the new one is saved
 over the reset state, so plain resets return to it.
 
-**DK Options** randomize Giant Punch charge on each new setup. `Charge Mode` is
-either `Range`, picking anywhere between a lowest and highest number of windups,
-or `None or Full`, which only ever gives 0 or a full punch — the two cases that
-change what DK actually threatens. `Show Charge` puts the result on screen: full,
-none, or `n/10`.
+**DK Options** randomize Giant Punch charge on each new setup:
+
+| Option | |
+|---|---|
+| Randomize Punch Charge | give DK a random charge on every randomized reset |
+| Charge Mode | Range / None or Full |
+| Lowest Charge | bottom of the range, 0-10 windups |
+| Highest Charge | top of the range |
+| Show Charge | print the result on screen |
+
+`Range` picks anywhere between the two limits. `None or Full` only ever gives 0
+or a full punch — the two cases that change what DK actually threatens, with
+nothing in between. `Show Charge` prints full, none, or `n/10`. The three rows
+below `Randomize Punch Charge` grey out when it is off, and `Lowest`/`Highest`
+grey out again in `None or Full` since the range is unused there.
 
 **Survival DI Moves** is a checklist, one row per move. Whatever you are
 currently attacking with is looked up in it, and only the ticked moves make the
