@@ -4,12 +4,17 @@
 
 Training Mode - Community Edition is an expanded and updated version of UnclePunch's training modpack for Super Smash Bros. Melee.
 
-To download the ISO, click [here](https://github.com/AlexanderHarrison/TrainingMode-CommunityEdition/releases/latest).
+This is a personal fork. It is upstream plus the changes in
+[CHANGES.md](CHANGES.md), which are not released as an ISO anywhere - build it
+yourself against a clean Melee 1.02 ISO:
 
-Join [the discord](https://discord.gg/2Khb8CVP7A) to discuss changes, new features, or ask for assistance.
+```
+./build.sh "/path/to/Super Smash Bros. Melee (USA) (En,Ja) (Rev 2).iso"
+```
 
-## Development
-Please read [DEVELOPMENT.md](DEVELOPMENT.md).
+That writes `TM-CE.iso`. For the unmodified upstream version, use its
+[releases](https://github.com/AlexanderHarrison/TrainingMode-CommunityEdition/releases/latest)
+instead.
 
 ## Changes From the Original
 - New Training Lab Features:
